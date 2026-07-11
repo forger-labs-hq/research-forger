@@ -1,31 +1,114 @@
-"""SQLite connection and schema management for local project state."""
+"""SQLite connection and schema management for local project state.
+
+Schema history:
+- v1 (Phase 0): ``meta``, ``projects``.
+- v2 (Phase 1A): ``repo_scans``, ``papers``, ``search_runs``, ``landscape``,
+  ``evidence_claims``, ``hypotheses``.
+
+All migrations are additive ``CREATE TABLE IF NOT EXISTS`` statements, so
+``ensure_schema`` can run on every connection open and silently upgrade
+older databases.
+"""
 
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+from researchforge.config.paths import db_path
 
-_CREATE_META_TABLE = """
-CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-)
-"""
+SCHEMA_VERSION = 2
 
-_CREATE_PROJECTS_TABLE = """
-CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    mode TEXT,
-    objective TEXT,
-    repository_metadata TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-)
-"""
+_V1_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        mode TEXT,
+        objective TEXT,
+        repository_metadata TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+]
+
+_V2_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS repo_scans (
+        scan_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        compatibility TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS papers (
+        paper_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        published_at TEXT NOT NULL,
+        relevance_score REAL NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS search_runs (
+        run_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        queries TEXT NOT NULL,
+        fetched_count INTEGER NOT NULL,
+        deduped_count INTEGER NOT NULL,
+        selected_count INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS landscape (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        record TEXT NOT NULL,
+        source_file TEXT,
+        imported_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS evidence_claims (
+        evidence_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        paper_id TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        record TEXT NOT NULL,
+        imported_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS hypotheses (
+        hypothesis_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        record TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+]
+
+_MIGRATIONS: dict[int, list[str]] = {
+    1: _V1_TABLES,
+    2: _V2_TABLES,
+}
 
 
 def get_connection(path: Path) -> sqlite3.Connection:
@@ -36,12 +119,26 @@ def get_connection(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def initialize_schema(conn: sqlite3.Connection) -> None:
-    """Create the `meta` and `projects` tables if they don't already exist."""
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create any missing tables and record the current schema version."""
     with conn:
-        conn.execute(_CREATE_META_TABLE)
-        conn.execute(_CREATE_PROJECTS_TABLE)
+        for version in sorted(_MIGRATIONS):
+            if version <= SCHEMA_VERSION:
+                for ddl in _MIGRATIONS[version]:
+                    conn.execute(ddl)
         conn.execute(
-            "INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             ("schema_version", str(SCHEMA_VERSION)),
         )
+
+
+def initialize_schema(conn: sqlite3.Connection) -> None:
+    """Backward-compatible alias for `ensure_schema`."""
+    ensure_schema(conn)
+
+
+def open_project_db(base: Path | None = None) -> sqlite3.Connection:
+    """Open (and, if needed, upgrade) the project database under `base`."""
+    conn = get_connection(db_path(base))
+    ensure_schema(conn)
+    return conn

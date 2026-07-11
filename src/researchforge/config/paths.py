@@ -13,6 +13,9 @@ from pathlib import Path
 
 RESEARCHFORGE_DIR_NAME = ".researchforge"
 DB_FILENAME = "researchforge.db"
+CONFIG_FILENAME = "config.json"
+SYNTHESIS_DIR_NAME = "synthesis"
+REPORTS_DIR_NAME = "reports"
 
 
 def researchforge_dir(base: Path | None = None) -> Path:
@@ -30,3 +33,18 @@ def is_initialized(base: Path | None = None) -> bool:
     """Whether `.researchforge/` and its database both exist at `base`."""
     root = researchforge_dir(base)
     return root.is_dir() and db_path(base).is_file()
+
+
+def config_path(base: Path | None = None) -> Path:
+    """Path to the optional settings-override file inside `.researchforge/`."""
+    return researchforge_dir(base) / CONFIG_FILENAME
+
+
+def synthesis_dir(base: Path | None = None) -> Path:
+    """Directory for the Claude<->CLI synthesis handshake files."""
+    return researchforge_dir(base) / SYNTHESIS_DIR_NAME
+
+
+def reports_dir(base: Path | None = None) -> Path:
+    """Directory for generated reports."""
+    return researchforge_dir(base) / REPORTS_DIR_NAME
