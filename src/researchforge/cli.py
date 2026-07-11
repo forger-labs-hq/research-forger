@@ -15,6 +15,7 @@ from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
 from researchforge.project.cli import project_app
 from researchforge.repository.cli import repo_app
+from researchforge.research.cli import papers_app, research_app
 from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
 from researchforge.utils.output import JsonOption, echo_model
@@ -29,6 +30,8 @@ app = typer.Typer(
 
 app.add_typer(project_app, name="project")
 app.add_typer(repo_app, name="repo")
+app.add_typer(research_app, name="research")
+app.add_typer(papers_app, name="papers")
 
 
 @app.command()
