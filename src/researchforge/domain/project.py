@@ -25,6 +25,10 @@ class ProjectStatus(StrEnum):
     """Lifecycle status of a project. Additional values arrive in later phases."""
 
     INITIALIZED = "initialized"
+    DEFINED = "defined"  # mode + objective captured
+    RESEARCHING = "researching"  # papers retrieved and stored
+    SYNTHESIZED = "synthesized"  # landscape + hypotheses imported
+    REPORTED = "reported"  # research report generated
 
 
 class RepositoryMetadata(BaseModel):
