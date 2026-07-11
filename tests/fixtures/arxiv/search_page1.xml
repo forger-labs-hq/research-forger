@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title type="html">ArXiv Query: search_query=all:routing</title>
+  <id>http://arxiv.org/api/abc</id>
+  <updated>2026-07-01T00:00:00-04:00</updated>
+  <opensearch:totalResults>5</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v2</id>
+    <updated>2024-02-01T10:00:00Z</updated>
+    <published>2024-01-15T09:00:00Z</published>
+    <title>Uncertainty-Aware Routing for
+  Cost-Efficient LLM Inference</title>
+    <summary>We propose an uncertainty-aware routing strategy that dispatches
+  queries to models of different sizes based on predictive entropy, reducing
+  inference cost by 30% while retaining 99% of quality.</summary>
+    <author><name>Alice Author</name></author>
+    <author><name>Bob Builder</name></author>
+    <arxiv:comment>17 pages</arxiv:comment>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2401.12345v2" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2401.12345v2" rel="related" type="application/pdf"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2312.00001v1</id>
+    <updated>2023-12-01T00:00:00Z</updated>
+    <published>2023-12-01T00:00:00Z</published>
+    <title>Fixed Routing Baselines Revisited</title>
+    <summary>A systematic study of fixed routing policies under cost and
+  latency constraints, establishing strong baselines.</summary>
+    <author><name>Carol Cruz</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2312.00001v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2312.00001v1" rel="related" type="application/pdf"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2405.98765v3</id>
+    <updated>2024-06-10T00:00:00Z</updated>
+    <published>2024-05-20T00:00:00Z</published>
+    <title>Selective Prediction Meets Model Cascades</title>
+    <summary>We connect selective prediction with cascade inference and show
+  conditions under which cascades violate latency budgets.</summary>
+    <author><name>Dan Deng</name></author>
+    <author><name>Eve Evans</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="stat.ML" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="stat.ML" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2405.98765v3" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2405.98765v3" rel="related" type="application/pdf"/>
+  </entry>
+</feed>

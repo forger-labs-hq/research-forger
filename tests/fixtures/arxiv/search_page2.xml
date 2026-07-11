@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title type="html">ArXiv Query: search_query=all:routing page 2</title>
+  <id>http://arxiv.org/api/abc2</id>
+  <updated>2026-07-01T00:00:00-04:00</updated>
+  <opensearch:totalResults>5</opensearch:totalResults>
+  <opensearch:startIndex>3</opensearch:startIndex>
+  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2501.11111v1</id>
+    <updated>2025-01-05T00:00:00Z</updated>
+    <published>2025-01-05T00:00:00Z</published>
+    <title>Calibration-Aware Dispatch for Mixture Serving</title>
+    <summary>Calibrated confidence estimates improve dispatch decisions in
+  mixture-of-experts serving systems.</summary>
+    <author><name>Frank Fu</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2501.11111v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2501.11111v1" rel="related" type="application/pdf"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2502.22222v1</id>
+    <updated>2025-02-14T00:00:00Z</updated>
+    <published>2025-02-14T00:00:00Z</published>
+    <title>Latency-Bounded Speculative Serving</title>
+    <summary>Speculative execution under strict latency budgets with abort
+  policies for tail control.</summary>
+    <author><name>Grace Gao</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.DC" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.DC" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2502.22222v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2502.22222v1" rel="related" type="application/pdf"/>
+  </entry>
+</feed>

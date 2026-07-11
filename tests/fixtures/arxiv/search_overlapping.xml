@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title type="html">ArXiv Query: overlapping results</title>
+  <id>http://arxiv.org/api/abc3</id>
+  <updated>2026-07-01T00:00:00-04:00</updated>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v1</id>
+    <updated>2024-01-15T09:00:00Z</updated>
+    <published>2024-01-15T09:00:00Z</published>
+    <title>Uncertainty-Aware Routing for Cost-Efficient LLM Inference</title>
+    <summary>Earlier version of the routing paper.</summary>
+    <author><name>Alice Author</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2401.12345v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2401.12345v1" rel="related" type="application/pdf"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2506.33333v1</id>
+    <updated>2025-06-01T00:00:00Z</updated>
+    <published>2025-06-01T00:00:00Z</published>
+    <title>Router Benchmarks for Heterogeneous Model Pools</title>
+    <summary>A benchmark suite for router evaluation across heterogeneous
+  model pools with cost accounting.</summary>
+    <author><name>Hank Ho</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2506.33333v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2506.33333v1" rel="related" type="application/pdf"/>
+  </entry>
+</feed>
