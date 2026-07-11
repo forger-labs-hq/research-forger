@@ -1,0 +1,85 @@
+"""Dependency checks backing the `researchforge doctor` command."""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+
+from pydantic import BaseModel
+
+PYTHON_MINIMUM: tuple[int, int] = (3, 12)
+
+
+class CheckResult(BaseModel):
+    name: str
+    ok: bool
+    required: bool
+    detail: str
+    hint: str | None = None
+
+
+def check_python(minimum: tuple[int, int] = PYTHON_MINIMUM) -> CheckResult:
+    current = (sys.version_info.major, sys.version_info.minor)
+    ok = current >= minimum
+    version_str = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    return CheckResult(
+        name="python",
+        ok=ok,
+        required=True,
+        detail=f"Python {version_str}",
+        hint=None if ok else f"Python {minimum[0]}.{minimum[1]}+ is required.",
+    )
+
+
+def _check_tool_version(
+    name: str, *, required: bool, hint: str, version_args: tuple[str, ...] = ("--version",)
+) -> CheckResult:
+    executable = shutil.which(name)
+    if executable is None:
+        return CheckResult(name=name, ok=False, required=required, detail="not found", hint=hint)
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, *version_args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return CheckResult(
+            name=name,
+            ok=True,
+            required=required,
+            detail="found (version unknown)",
+        )
+
+    detail = (result.stdout or result.stderr or "found").strip().splitlines()[0]
+    return CheckResult(name=name, ok=True, required=required, detail=detail)
+
+
+def check_git() -> CheckResult:
+    return _check_tool_version(
+        "git", required=True, hint="Install Git: https://git-scm.com/downloads"
+    )
+
+
+def check_docker() -> CheckResult:
+    return _check_tool_version(
+        "docker",
+        required=False,
+        hint="Install Docker for stronger experiment isolation: https://docs.docker.com/get-docker/",
+    )
+
+
+def check_gh() -> CheckResult:
+    return _check_tool_version(
+        "gh",
+        required=False,
+        hint="Install the GitHub CLI to enable draft PR creation: https://cli.github.com/",
+    )
+
+
+def run_all_checks() -> list[CheckResult]:
+    return [check_python(), check_git(), check_docker(), check_gh()]
