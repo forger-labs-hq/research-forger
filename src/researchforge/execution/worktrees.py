@@ -27,7 +27,7 @@ class WorktreeManager:
         self.repo_root = repo_root.resolve()
         self.worktrees_root = worktrees_dir(self.repo_root)
 
-    def _git(self, *args: str, timeout: float = _GIT_TIMEOUT_S) -> str:
+    def _git(self, *args: str, timeout: float = _GIT_TIMEOUT_S, strip: bool = True) -> str:
         try:
             result = subprocess.run(
                 ["git", "-C", str(self.repo_root), *args],
@@ -42,7 +42,7 @@ class WorktreeManager:
             raise WorktreeError(
                 f"git {' '.join(args)} failed: {result.stderr.strip() or result.stdout.strip()}"
             )
-        return result.stdout.strip()
+        return result.stdout.strip() if strip else result.stdout
 
     def _path_for(self, name: str) -> Path:
         if name in (".", "..") or not _VALID_NAME.match(name):
@@ -85,6 +85,52 @@ class WorktreeManager:
         if not self.worktrees_root.is_dir():
             return []
         return sorted(p.name for p in self.worktrees_root.iterdir() if p.is_dir())
+
+    def apply_patch_check(self, worktree: Path, patch: Path) -> tuple[bool, str]:
+        """Dry-run a patch against a worktree; returns (applies, git message)."""
+        try:
+            self._git("-C", str(worktree), "apply", "--check", "--verbose", str(patch))
+        except WorktreeError as exc:
+            return False, str(exc)
+        return True, ""
+
+    def patch_numstat(self, worktree: Path, patch: Path) -> list[str]:
+        """Changed paths a patch would touch, extracted by git (never authored)."""
+        output = self._git("-C", str(worktree), "apply", "--numstat", "-z", str(patch))
+        paths: list[str] = []
+        for entry in output.split("\0"):
+            if not entry.strip():
+                continue
+            parts = entry.split("\t")
+            if len(parts) >= 3 and parts[2]:
+                paths.append(parts[2])
+            elif len(parts) == 1 and paths:
+                # Rename continuation records (old\0new): keep both paths.
+                paths.append(parts[0])
+        return paths
+
+    def apply_patch(self, worktree: Path, patch: Path) -> None:
+        """Apply a patch to a worktree (raises WorktreeError with git's message)."""
+        self._git("-C", str(worktree), "apply", str(patch))
+
+    def changed_paths(self, worktree: Path) -> list[str]:
+        """Paths currently modified/added in a worktree, including untracked."""
+        # strip=False: entries like " M path" carry a significant leading space.
+        output = self._git("-C", str(worktree), "status", "--porcelain", "-z", "-uall", strip=False)
+        paths: list[str] = []
+        expect_rename_source = False
+        for entry in output.split("\0"):
+            if not entry:
+                continue
+            if expect_rename_source:
+                paths.append(entry)
+                expect_rename_source = False
+                continue
+            status, path = entry[:2], entry[3:]
+            paths.append(path)
+            if "R" in status or "C" in status:
+                expect_rename_source = True
+        return paths
 
     def ensure_ignored(self) -> None:
         """Make git ignore `.researchforge/` via .git/info/exclude (local-only)."""

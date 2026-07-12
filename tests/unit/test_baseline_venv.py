@@ -65,7 +65,7 @@ class TestVenvBaseline:
 
         status = json.loads(cli_runner.invoke(app, ["status", "--json"]).output)
         assert status["status"] == "baselined"
-        assert "1C" in status["next_action"]
+        assert "experiment plan" in status["next_action"]
 
         shown = json.loads(cli_runner.invoke(app, ["baseline", "show", "--json"]).output)
         assert shown["status"] == "succeeded"

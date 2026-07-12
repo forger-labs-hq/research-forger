@@ -15,6 +15,7 @@ from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.contract.cli import contract_app
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
 from researchforge.execution.cli import baseline_app
+from researchforge.experiments.cli import experiment_app
 from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
@@ -40,6 +41,7 @@ app.add_typer(hypotheses_app, name="hypotheses")
 app.add_typer(report_app, name="report")
 app.add_typer(contract_app, name="contract")
 app.add_typer(baseline_app, name="baseline")
+app.add_typer(experiment_app, name="experiment")
 
 
 @app.command()
@@ -100,6 +102,26 @@ def _count(conn: sqlite3.Connection, table: str) -> int:
     return int(row["n"])
 
 
+def _experiment_next_action() -> str:
+    """Next step once a baseline exists (Phase 1C planning surface)."""
+    from researchforge.domain.experiment import ExperimentStatus, PlanStatus
+    from researchforge.storage.experiment_repository import list_experiments, list_plans
+
+    with closing(open_project_db()) as conn:
+        plans = list_plans(conn)
+        experiments = list_experiments(conn)
+    if not plans:
+        return "researchforge experiment plan <hyp-id>  # plan experiment variants"
+    latest = plans[-1]
+    if latest.status is PlanStatus.PLANNED:
+        return f"researchforge experiment approve {latest.plan_id}"
+    if latest.status is PlanStatus.APPROVED:
+        return f"researchforge experiment run {latest.plan_id}"
+    if any(e.status is ExperimentStatus.VALIDATED for e in experiments):
+        return "Phase 1C complete — shipping arrives in Phase 1D."
+    return f"researchforge experiment run {latest.plan_id}  # or plan a new batch"
+
+
 def _next_action(
     project: Project,
     papers: int,
@@ -117,14 +139,14 @@ def _next_action(
     if contract_version is not None:
         if contract_drifted:
             return "researchforge contract approve  # researchforge.yaml changed since approval"
-        if project.status is not ProjectStatus.BASELINED:
+        if project.status not in (ProjectStatus.BASELINED, ProjectStatus.VALIDATED):
             if baseline_failed:
                 return (
                     "Baseline failed — inspect .researchforge/artifacts/baseline/ and "
                     "re-run `researchforge baseline run`"
                 )
             return "researchforge baseline run"
-        return "Phase 1B complete — experiment engine arrives in Phase 1C."
+        return _experiment_next_action()
     if papers == 0:
         return "researchforge research search"
     if landscape == 0 or hypotheses == 0:
