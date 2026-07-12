@@ -66,11 +66,22 @@ def check_git() -> CheckResult:
 
 
 def check_docker() -> CheckResult:
-    return _check_tool_version(
+    result = _check_tool_version(
         "docker",
         required=False,
         hint="Install Docker for stronger experiment isolation: https://docs.docker.com/get-docker/",
     )
+    if not result.ok:
+        return result
+
+    from researchforge.execution.environment import probe_docker
+
+    probe = probe_docker()
+    if probe.daemon_running:
+        detail = f"{result.detail} (daemon running)"
+    else:
+        detail = f"{result.detail} (daemon NOT running)"
+    return result.model_copy(update={"detail": detail})
 
 
 def check_gh() -> CheckResult:
