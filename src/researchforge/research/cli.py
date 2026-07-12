@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import closing
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -11,6 +12,7 @@ import typer
 from researchforge.config.settings import load_settings
 from researchforge.domain.paper import Paper
 from researchforge.research.arxiv_client import ArxivClient, ArxivError
+from researchforge.research.context_export import build_context, write_context
 from researchforge.research.search_service import CitedPapersError, run_search
 from researchforge.storage.db import open_project_db
 from researchforge.storage.paper_repository import get_paper, list_papers
@@ -91,6 +93,47 @@ def search(
         if len(outcome.selected) > 10:
             typer.echo(f"  ... and {len(outcome.selected) - 10} more (`researchforge papers list`)")
         typer.echo("Next: researchforge research context")
+
+
+@research_app.command()
+def context(
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Write the bundle here instead of the default path."),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Export the synthesis context bundle for Claude to read."""
+    with closing(open_project_db()) as conn:
+        project = get_project(conn)
+        if project is None or project.objective is None:
+            typer.echo("Define the project first: `researchforge project create`.")
+            raise typer.Exit(code=1)
+        scan = get_latest_scan(conn)
+        bundle = build_context(conn, project, scan, load_settings())
+
+    if not bundle.papers:
+        typer.echo("No papers stored. Run `researchforge research search` first.")
+        raise typer.Exit(code=1)
+
+    if json_output:
+        typer.echo(bundle.model_dump_json(indent=2))
+        return
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        path = output
+    else:
+        path = write_context(bundle)
+
+    typer.echo(f"Synthesis context written to {path}")
+    typer.echo("Ask Claude to read it and write these artifacts:")
+    typer.echo(f"  - {bundle.expected_artifacts.landscape_path}")
+    typer.echo(f"  - {bundle.expected_artifacts.hypotheses_path}")
+    typer.echo("Then import them:")
+    typer.echo("  researchforge research landscape --import <landscape file>")
+    typer.echo("  researchforge hypotheses import <hypotheses file>")
 
 
 def _print_paper(paper: Paper) -> None:

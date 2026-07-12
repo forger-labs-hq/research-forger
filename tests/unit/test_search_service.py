@@ -3,33 +3,10 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
-import pytest
 from typer.testing import CliRunner
 
-import researchforge.research.cli as research_cli
 from researchforge.cli import app
-from researchforge.research.arxiv_client import ArxivClient
 from researchforge.storage.db import open_project_db
-
-FIXTURES = Path(__file__).parent.parent / "fixtures" / "arxiv"
-
-
-def _fixture_client() -> ArxivClient:
-    """Client serving page1 for start=0 and page2 otherwise, no sleeping."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        page = "search_page1.xml" if request.url.params["start"] == "0" else "search_page2.xml"
-        return httpx.Response(200, text=(FIXTURES / page).read_text(encoding="utf-8"))
-
-    return ArxivClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda s: None
-    )
-
-
-@pytest.fixture
-def patched_arxiv(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_cli, "ArxivClient", _fixture_client)
 
 
 class TestResearchSearchCli:
