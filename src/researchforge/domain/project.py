@@ -29,6 +29,8 @@ class ProjectStatus(StrEnum):
     RESEARCHING = "researching"  # papers retrieved and stored
     SYNTHESIZED = "synthesized"  # landscape + hypotheses imported
     REPORTED = "reported"  # research report generated
+    CONTRACTED = "contracted"  # experiment contract approved
+    BASELINED = "baselined"  # baseline run succeeded
 
 
 class RepositoryMetadata(BaseModel):

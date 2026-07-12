@@ -1,8 +1,6 @@
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from researchforge.cli import app
@@ -10,51 +8,6 @@ from researchforge.domain.repo_scan import CompatibilityStatus
 from researchforge.repository.scanner import scan_repository
 
 RepoFactory = Callable[..., Path]
-
-
-@pytest.fixture
-def repo_factory(tmp_path_factory: pytest.TempPathFactory) -> RepoFactory:
-    """Build a throwaway repository directory with configurable traits."""
-
-    def _build(
-        *,
-        git: bool = True,
-        pyproject: bool = False,
-        requirements: bool = False,
-        tests_dir: bool = False,
-        benchmarks_dir: bool = False,
-        dockerfile: bool = False,
-        readme: str | None = None,
-    ) -> Path:
-        repo = tmp_path_factory.mktemp("repo")
-        if git:
-            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-            subprocess.run(
-                ["git", "-C", str(repo), "config", "user.email", "t@example.com"], check=True
-            )
-            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
-            (repo / ".keep").write_text("", encoding="utf-8")
-            subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True)
-        if pyproject:
-            (repo / "pyproject.toml").write_text(
-                '[project]\nname = "demo-pkg"\nrequires-python = ">=3.12"\n'
-                'dependencies = ["numpy>=1.26", "scikit-learn"]\n',
-                encoding="utf-8",
-            )
-        if requirements:
-            (repo / "requirements.txt").write_text("requests\n", encoding="utf-8")
-        if tests_dir:
-            (repo / "tests").mkdir()
-        if benchmarks_dir:
-            (repo / "benchmarks").mkdir()
-        if dockerfile:
-            (repo / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
-        if readme is not None:
-            (repo / "README.md").write_text(readme, encoding="utf-8")
-        return repo
-
-    return _build
 
 
 class TestCompatibilityDecision:
