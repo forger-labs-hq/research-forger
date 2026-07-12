@@ -196,6 +196,116 @@ def contracted_project(
     return repo
 
 
+FUNNEL_CONTRACT_TEMPLATE = """\
+version: 1
+project:
+  name: {name}
+  mode: improve_repository
+objective:
+  description: "Improve classification F1 without increasing latency"
+  primary_metric:
+    name: f1
+    direction: maximize
+  hard_constraints:
+    - name: p95_latency_ms
+      operator: "<="
+      value: 200
+  secondary_metrics:
+    - p95_latency_ms
+repository:
+  baseline_ref: main
+execution:
+  mode: auto
+  trusted_repository: true
+  setup_command: null
+  screening_command: "python benchmarks/evaluate.py --quick"
+  full_command: "python benchmarks/evaluate.py"
+  result_file: artifacts/results.json
+  timeout_minutes: 5
+  cpu_limit: 1
+  memory_mb: 1024
+  max_experiments: 6
+permissions:
+  editable_paths:
+    - src/
+  protected_paths:
+    - benchmarks/
+network:
+  mode: none
+secrets:
+  forward_environment_variables: []
+validation:
+  repeat_finalists: 2
+  require_existing_tests: false
+shipping:
+  allow_branch_creation: true
+  allow_draft_pr: false
+"""
+
+
+@pytest.fixture
+def funnel_project(
+    cli_runner: CliRunner,
+    isolated_project_dir: Path,
+    repo_factory: RepoFactory,
+) -> Path:
+    """Baselined project wired for the experiment funnel: knob-driven
+    deterministic evaluator, screening command, and a latency hard constraint.
+
+    Returns the fixture repo path.
+    """
+    from contextlib import closing
+
+    from researchforge.cli import app
+    from researchforge.domain.hypothesis import Hypothesis, Level, NoveltyConfidence
+    from researchforge.storage.db import open_project_db
+    from researchforge.storage.hypothesis_repository import replace_hypotheses
+    from researchforge.storage.project_repository import get_project
+
+    repo = repo_factory(
+        requirements=True,
+        eval_script=(EVAL_SCRIPTS / "knobs.py").read_text(encoding="utf-8"),
+    )
+    result = cli_runner.invoke(
+        app,
+        [
+            "project",
+            "create",
+            "--mode",
+            "improve_repository",
+            "--objective",
+            "Improve classification F1 without increasing latency",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert cli_runner.invoke(app, ["repo", "scan", str(repo)]).exit_code == 0
+
+    (repo / "researchforge.yaml").write_text(
+        FUNNEL_CONTRACT_TEMPLATE.format(name=repo.name), encoding="utf-8"
+    )
+    approve = cli_runner.invoke(app, ["contract", "approve", "--yes"])
+    assert approve.exit_code == 0, approve.output
+
+    hypothesis = Hypothesis(
+        hypothesis_id="hyp-001",
+        title="Caching improves F1 cheaply",
+        claim="Memoizing hot paths improves F1 without latency cost.",
+        rationale="Fixture rationale.",
+        feasibility=Level.HIGH,
+        estimated_effort=Level.LOW,
+        novelty_confidence=NoveltyConfidence.UNKNOWN,
+        proposed_experiment="Apply caching variants and benchmark.",
+    )
+    with closing(open_project_db()) as conn:
+        project = get_project(conn)
+        assert project is not None
+        replace_hypotheses(conn, project.id, [hypothesis])
+
+    baseline = cli_runner.invoke(app, ["baseline", "run"])
+    assert baseline.exit_code == 0, baseline.output
+    return repo
+
+
 @pytest.fixture
 def baselined_project(cli_runner: CliRunner, contracted_project: Path) -> Path:
     """Contracted project with a stored hypothesis and a successful venv baseline.

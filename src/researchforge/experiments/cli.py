@@ -160,6 +160,85 @@ def approve_command(
         typer.echo(f"Next: researchforge experiment run {plan_id}")
 
 
+def _emit_summary(summary: object, json_output: bool) -> None:
+    from researchforge.execution.experiments import RunSummary
+
+    assert isinstance(summary, RunSummary)
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "run_id": summary.run_id,
+                    "counts": summary.counts,
+                    "promising": summary.promising,
+                    "next_action": summary.next_action,
+                },
+                indent=2,
+            )
+        )
+        return
+    typer.echo(f"Run {summary.run_id} complete:")
+    for status, count in sorted(summary.counts.items()):
+        typer.echo(f"  {status}: {count}")
+    if summary.promising:
+        typer.echo(f"Promising: {', '.join(summary.promising)}")
+    typer.echo(f"Next: {summary.next_action}")
+
+
+@experiment_app.command("run")
+def run_command(
+    plan_id: Annotated[str, typer.Argument(help="e.g. plan-001")],
+    json_output: JsonOption = False,
+) -> None:
+    """Run the approved experiments: screening then full benchmark, one at a time."""
+    from researchforge.domain.environment import ExecutionEngine
+    from researchforge.execution.experiments import (
+        ExperimentBlockedError,
+        execute_run,
+        start_run,
+    )
+    from researchforge.execution.venv_exec import VENV_WARNING
+
+    with closing(open_project_db()) as conn:
+        try:
+            prep, run = start_run(conn, plan_id)
+        except ExperimentBlockedError as exc:
+            typer.echo(str(exc))
+            if exc.resolution is not None:
+                for reason in exc.resolution.reasons:
+                    typer.echo(f"  - {reason}")
+                for action in exc.resolution.required_user_actions:
+                    typer.echo(f"  * {action}")
+            raise typer.Exit(code=1) from None
+
+        if prep.resolution.execution_mode is ExecutionEngine.VENV and not json_output:
+            typer.echo(f"warning: {VENV_WARNING}")
+        if run.warnings:  # e.g. failed screening baseline
+            for warning in run.warnings:
+                typer.echo(f"warning: {warning}")
+            raise typer.Exit(code=1)
+
+        summary = execute_run(conn, prep, run)
+    _emit_summary(summary, json_output)
+
+
+@experiment_app.command("resume")
+def resume_command(
+    run_id: Annotated[str, typer.Argument(help="e.g. run-001")],
+    json_output: JsonOption = False,
+) -> None:
+    """Resume an interrupted run: stale stages are marked failed and retried."""
+    from researchforge.execution.experiments import ExperimentBlockedError, resume_run
+
+    with closing(open_project_db()) as conn:
+        try:
+            summary = resume_run(conn, run_id)
+        except ExperimentBlockedError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from None
+    _emit_summary(summary, json_output)
+
+
 @experiment_app.command("list")
 def list_command(json_output: JsonOption = False) -> None:
     """List plans and their experiments."""
