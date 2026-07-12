@@ -5,6 +5,8 @@ Schema history:
 - v2 (Phase 1A): ``repo_scans``, ``papers``, ``search_runs``, ``landscape``,
   ``evidence_claims``, ``hypotheses``.
 - v3 (Phase 1B): ``contracts``, ``baseline_runs``.
+- v4 (Phase 1C): ``experiment_plans``, ``experiments``, ``experiment_runs``,
+  ``experiment_executions``.
 
 All migrations are additive ``CREATE TABLE IF NOT EXISTS`` statements, so
 ``ensure_schema`` can run on every connection open and silently upgrade
@@ -18,7 +20,7 @@ from pathlib import Path
 
 from researchforge.config.paths import db_path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _V1_TABLES = [
     """
@@ -135,10 +137,66 @@ _V3_TABLES = [
     """,
 ]
 
+_V4_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS experiment_plans (
+        plan_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        hypothesis_id TEXT NOT NULL,
+        contract_id TEXT NOT NULL,
+        contract_version INTEGER NOT NULL,
+        baseline_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiments (
+        experiment_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        hypothesis_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_runs (
+        run_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS experiment_executions (
+        execution_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        experiment_id TEXT NOT NULL,
+        benchmark_stage TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (experiment_id, benchmark_stage, attempt)
+    )
+    """,
+]
+
 _MIGRATIONS: dict[int, list[str]] = {
     1: _V1_TABLES,
     2: _V2_TABLES,
     3: _V3_TABLES,
+    4: _V4_TABLES,
 }
 
 

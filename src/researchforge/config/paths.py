@@ -64,3 +64,13 @@ def worktrees_dir(base: Path | None = None) -> Path:
 def artifacts_dir(base: Path | None = None) -> Path:
     """Directory holding run artifacts (created lazily)."""
     return researchforge_dir(base) / "artifacts"
+
+
+def experiments_dir(base: Path | None = None) -> Path:
+    """Staging directory for the experiment-plan handshake files."""
+    return researchforge_dir(base) / "experiments"
+
+
+def experiment_artifacts_dir(base: Path | None = None) -> Path:
+    """Directory holding experiment run artifacts (created lazily)."""
+    return artifacts_dir(base) / "experiments"

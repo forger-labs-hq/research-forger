@@ -92,7 +92,8 @@ class ExecutionSection(BaseModel):
     mode: ContractExecutionMode = ContractExecutionMode.AUTO
     trusted_repository: bool = False
     setup_command: str | None = None
-    screening_command: str | None = None  # stored now, consumed by Phase 1C
+    screening_command: str | None = None  # Phase 1C screening stage
+    test_command: str | None = None  # optional required tests, run before evaluation
     full_command: str = Field(min_length=1)
     result_file: str = "artifacts/results.json"
     timeout_minutes: int = Field(default=20, ge=1, le=1440)

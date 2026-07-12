@@ -32,16 +32,25 @@ def insert_baseline_run(conn: sqlite3.Connection, project_id: str, run: Baseline
         )
 
 
-def get_latest_baseline(conn: sqlite3.Connection) -> BaselineRun | None:
+def get_latest_baseline(conn: sqlite3.Connection, command_kind: str = "full") -> BaselineRun | None:
+    """Latest baseline of the given kind (per-run screening baselines are
+    stored with command_kind='screening' and never satisfy the gate)."""
     row = conn.execute(
-        "SELECT record FROM baseline_runs ORDER BY created_at DESC LIMIT 1"
+        "SELECT record FROM baseline_runs "
+        "WHERE json_extract(record, '$.command_kind') = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (command_kind,),
     ).fetchone()
     return BaselineRun.model_validate_json(row["record"]) if row is not None else None
 
 
-def get_latest_successful_baseline(conn: sqlite3.Connection) -> BaselineRun | None:
+def get_latest_successful_baseline(
+    conn: sqlite3.Connection, command_kind: str = "full"
+) -> BaselineRun | None:
     row = conn.execute(
-        "SELECT record FROM baseline_runs WHERE status = ? ORDER BY created_at DESC LIMIT 1",
-        (BaselineStatus.SUCCEEDED.value,),
+        "SELECT record FROM baseline_runs "
+        "WHERE status = ? AND json_extract(record, '$.command_kind') = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (BaselineStatus.SUCCEEDED.value, command_kind),
     ).fetchone()
     return BaselineRun.model_validate_json(row["record"]) if row is not None else None

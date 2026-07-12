@@ -7,9 +7,7 @@ experimentation via `baseline_gate`.
 
 from __future__ import annotations
 
-import os
 import platform as platform_module
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,14 +17,14 @@ from uuid import uuid4
 from researchforge.config.paths import artifacts_dir, contract_path
 from researchforge.contract.service import check_contract_drift
 from researchforge.domain.baseline import BaselineRun, BaselineStatus, EnvironmentFingerprint
-from researchforge.domain.contract import ContractSpec, ExperimentContract, NetworkMode
-from researchforge.domain.environment import DockerProbe, EnvironmentResolution, ExecutionEngine
+from researchforge.domain.contract import ExperimentContract
+from researchforge.domain.environment import DockerProbe, EnvironmentResolution
 from researchforge.domain.project import Project, ProjectStatus
 from researchforge.domain.repo_scan import CompatibilityStatus
-from researchforge.execution import docker_exec, venv_exec
+from researchforge.execution import venv_exec
 from researchforge.execution.environment import probe_docker, resolve_environment
-from researchforge.execution.metrics import MetricParseError, MetricResult, parse_result_file
-from researchforge.execution.runner import CommandRunner, SubprocessRunner, shell_argv
+from researchforge.execution.evaluation import EvaluationStatus, run_evaluation
+from researchforge.execution.runner import CommandRunner, SubprocessRunner
 from researchforge.execution.worktrees import WorktreeManager
 from researchforge.project.service import touch_project_status
 from researchforge.storage.baseline_repository import (
@@ -38,6 +36,16 @@ from researchforge.storage.project_repository import get_project
 from researchforge.storage.scan_repository import get_latest_scan
 
 BASELINE_WORKTREE = "baseline"
+
+_EVALUATION_TO_BASELINE_STATUS: dict[EvaluationStatus, BaselineStatus] = {
+    EvaluationStatus.SUCCEEDED: BaselineStatus.SUCCEEDED,
+    EvaluationStatus.FAILED_SETUP: BaselineStatus.FAILED_SETUP,
+    # Baselines pass test_command=None, so FAILED_TESTS is defensive only.
+    EvaluationStatus.FAILED_TESTS: BaselineStatus.FAILED_EXECUTION,
+    EvaluationStatus.FAILED_EXECUTION: BaselineStatus.FAILED_EXECUTION,
+    EvaluationStatus.FAILED_TIMEOUT: BaselineStatus.FAILED_TIMEOUT,
+    EvaluationStatus.FAILED_INVALID_RESULT: BaselineStatus.FAILED_INVALID_RESULT,
+}
 
 
 class BaselineBlockedError(Exception):
@@ -126,22 +134,7 @@ def run_baseline(
     timeout_seconds = spec.execution.timeout_minutes * 60.0
     started_at = datetime.now(UTC)
 
-    fingerprint = EnvironmentFingerprint(
-        platform=platform_module.platform(),
-        execution_mode=engine,
-        contract_id=prep.contract.contract_id,
-        contract_version=prep.contract.contract_version,
-        commit_sha=commit_sha,
-    )
-
-    status: BaselineStatus
-    failure_reason: str | None = None
-    metrics: MetricResult | None = None
     warnings: list[str] = []
-    stdout_path = run_artifacts / "stdout.log"
-    stderr_path = run_artifacts / "stderr.log"
-    results_path: str | None = None
-
     if commit_sha != prep.contract.baseline_commit:
         warnings.append(
             f"baseline_ref {spec.repository.baseline_ref!r} moved since approval "
@@ -149,35 +142,29 @@ def run_baseline(
             "commit is recorded as fact."
         )
 
-    if engine is ExecutionEngine.VENV:
-        status, failure_reason, metrics, warnings_run, results_path, fingerprint = _run_venv(
-            spec=spec,
-            worktree=worktree,
-            run_artifacts=run_artifacts,
-            runner=active_runner,
-            secrets=secrets,
-            timeout_seconds=timeout_seconds,
-            fingerprint=fingerprint,
-            stdout_path=stdout_path,
-            stderr_path=stderr_path,
-        )
-    else:
-        status, failure_reason, metrics, warnings_run, results_path, fingerprint = _run_docker(
-            spec=spec,
-            worktree=worktree,
-            run_artifacts=run_artifacts,
-            runner=active_runner,
-            secrets=secrets,
-            timeout_seconds=timeout_seconds,
-            fingerprint=fingerprint,
-            baseline_id=baseline_id,
-            stdout_path=stdout_path,
-            stderr_path=stderr_path,
-        )
-    warnings.extend(warnings_run)
+    outcome = run_evaluation(
+        spec=spec,
+        engine=engine,
+        command=spec.execution.full_command,
+        worktree=worktree,
+        run_artifacts=run_artifacts,
+        runner=active_runner,
+        secrets=secrets,
+        timeout_seconds=timeout_seconds,
+        fingerprint=EnvironmentFingerprint(
+            platform=platform_module.platform(),
+            execution_mode=engine,
+            contract_id=prep.contract.contract_id,
+            contract_version=prep.contract.contract_version,
+            commit_sha=commit_sha,
+        ),
+        name_slug=f"bl-{baseline_id[:12]}",
+    )
+    warnings.extend(outcome.warnings)
 
     _redact_logs(sorted(run_artifacts.glob("*.log")), secrets)
 
+    status = _EVALUATION_TO_BASELINE_STATUS[outcome.status]
     completed_at = datetime.now(UTC)
     run = BaselineRun(
         baseline_id=baseline_id,
@@ -187,217 +174,29 @@ def run_baseline(
         execution_mode=engine,
         command=spec.execution.full_command,
         status=status,
-        failure_reason=failure_reason,
-        metrics=metrics,
+        failure_reason=outcome.failure_reason,
+        metrics=outcome.metrics,
         warnings=warnings,
-        fingerprint=fingerprint,
-        stdout_path=str(stdout_path),
-        stderr_path=str(stderr_path),
-        results_path=results_path,
+        fingerprint=outcome.fingerprint,
+        stdout_path=str(run_artifacts / "stdout.log"),
+        stderr_path=str(run_artifacts / "stderr.log"),
+        results_path=outcome.results_path,
         started_at=started_at,
         completed_at=completed_at,
         duration_seconds=(completed_at - started_at).total_seconds(),
     )
     (run_artifacts / "baseline_run.json").write_text(run.model_dump_json(indent=2), "utf-8")
-    (run_artifacts / "fingerprint.json").write_text(fingerprint.model_dump_json(indent=2), "utf-8")
+    (run_artifacts / "fingerprint.json").write_text(
+        outcome.fingerprint.model_dump_json(indent=2), "utf-8"
+    )
     insert_baseline_run(conn, prep.project.id, run)
     if status is BaselineStatus.SUCCEEDED:
         touch_project_status(conn, ProjectStatus.BASELINED)
     return run
 
 
-def _finalize_result(
-    spec: ContractSpec,
-    worktree: Path,
-    run_artifacts: Path,
-) -> tuple[BaselineStatus, str | None, MetricResult | None, list[str], str | None]:
-    """Copy and parse the result file after a successful evaluation command."""
-    source = worktree / spec.execution.result_file
-    copied: str | None = None
-    if source.is_file():
-        target = run_artifacts / "results.json"
-        shutil.copyfile(source, target)
-        copied = str(target)
-    try:
-        metrics, warnings = parse_result_file(source, spec)
-    except MetricParseError as exc:
-        return (
-            BaselineStatus.FAILED_INVALID_RESULT,
-            "; ".join(exc.errors),
-            None,
-            [],
-            copied,
-        )
-    return BaselineStatus.SUCCEEDED, None, metrics, warnings, copied
-
-
-def _run_venv(
-    *,
-    spec: ContractSpec,
-    worktree: Path,
-    run_artifacts: Path,
-    runner: CommandRunner,
-    secrets: dict[str, str],
-    timeout_seconds: float,
-    fingerprint: EnvironmentFingerprint,
-    stdout_path: Path,
-    stderr_path: Path,
-) -> tuple[
-    BaselineStatus, str | None, MetricResult | None, list[str], str | None, EnvironmentFingerprint
-]:
-    venv_python, outcome = venv_exec.create_venv(
-        worktree, runner, timeout_seconds=timeout_seconds, log_dir=run_artifacts
-    )
-    if not outcome.ok:
-        return (
-            BaselineStatus.FAILED_SETUP,
-            "Failed to create the virtual environment; see venv_create_stderr.log.",
-            None,
-            [],
-            None,
-            fingerprint,
-        )
-
-    env = venv_exec.minimal_env(venv_python.parent.parent, secrets)
-
-    if spec.execution.setup_command:
-        setup_outcome = runner.run(
-            shell_argv(spec.execution.setup_command),
-            cwd=worktree,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdout_path=run_artifacts / "setup_stdout.log",
-            stderr_path=run_artifacts / "setup_stderr.log",
-        )
-        if not setup_outcome.ok:
-            reason = (
-                "Setup command timed out."
-                if setup_outcome.timed_out
-                else f"Setup command exited {setup_outcome.exit_code}; see setup_stderr.log."
-            )
-            return BaselineStatus.FAILED_SETUP, reason, None, [], None, fingerprint
-
-    eval_outcome = runner.run(
-        shell_argv(spec.execution.full_command),
-        cwd=worktree,
-        env=env,
-        timeout_seconds=timeout_seconds,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-    )
-
-    python_version, packages_hash = venv_exec.venv_fingerprint(
-        venv_python, runner, log_dir=run_artifacts
-    )
-    fingerprint = fingerprint.model_copy(
-        update={"python_version": python_version, "venv_packages_hash": packages_hash}
-    )
-    # Persist artifacts first, then drop the venv (spec §9.4 step 8).
-    shutil.rmtree(worktree / venv_exec.VENV_DIR_NAME, ignore_errors=True)
-
-    if eval_outcome.timed_out:
-        return (
-            BaselineStatus.FAILED_TIMEOUT,
-            f"Evaluation timed out after {timeout_seconds:.0f}s.",
-            None,
-            [],
-            None,
-            fingerprint,
-        )
-    if eval_outcome.exit_code != 0:
-        return (
-            BaselineStatus.FAILED_EXECUTION,
-            f"Evaluation command exited {eval_outcome.exit_code}; see stderr.log.",
-            None,
-            [],
-            None,
-            fingerprint,
-        )
-
-    final = _finalize_result(spec, worktree, run_artifacts)
-    return (*final, fingerprint)
-
-
-def _run_docker(
-    *,
-    spec: ContractSpec,
-    worktree: Path,
-    run_artifacts: Path,
-    runner: CommandRunner,
-    secrets: dict[str, str],
-    timeout_seconds: float,
-    fingerprint: EnvironmentFingerprint,
-    baseline_id: str,
-    stdout_path: Path,
-    stderr_path: Path,
-) -> tuple[
-    BaselineStatus, str | None, MetricResult | None, list[str], str | None, EnvironmentFingerprint
-]:
-    tag = f"researchforge-baseline:{baseline_id[:12]}"
-    build_outcome = docker_exec.build_image(
-        worktree, tag, runner, timeout_seconds=timeout_seconds, log_dir=run_artifacts
-    )
-    if not build_outcome.ok:
-        reason = (
-            "Docker build timed out."
-            if build_outcome.timed_out
-            else f"Docker build exited {build_outcome.exit_code}; see docker_build_stderr.log."
-        )
-        return BaselineStatus.FAILED_SETUP, reason, None, [], None, fingerprint
-
-    fingerprint = fingerprint.model_copy(
-        update={"docker_image_id": docker_exec.image_id(tag, runner, log_dir=run_artifacts)}
-    )
-
-    command = spec.execution.full_command
-    if spec.execution.setup_command:
-        command = f"{spec.execution.setup_command} && {command}"
-
-    container_name = f"researchforge-bl-{baseline_id[:12]}"
-    argv = docker_exec.docker_run_argv(
-        image=tag,
-        container_name=container_name,
-        worktree=worktree,
-        artifacts=run_artifacts,
-        execution=spec.execution,
-        network=spec.network.mode if spec.network else NetworkMode.NONE,
-        forwarded_names=list(secrets),
-        command=command,
-    )
-    eval_outcome = runner.run(
-        argv,
-        cwd=worktree,
-        env={**os.environ, **secrets},
-        timeout_seconds=timeout_seconds,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-    )
-    if eval_outcome.timed_out:
-        docker_exec.force_remove_container(container_name, runner, log_dir=run_artifacts)
-        return (
-            BaselineStatus.FAILED_TIMEOUT,
-            f"Evaluation timed out after {timeout_seconds:.0f}s; container removed.",
-            None,
-            [],
-            None,
-            fingerprint,
-        )
-    if eval_outcome.exit_code != 0:
-        return (
-            BaselineStatus.FAILED_EXECUTION,
-            f"Container exited {eval_outcome.exit_code}; see stderr.log.",
-            None,
-            [],
-            None,
-            fingerprint,
-        )
-
-    final = _finalize_result(spec, worktree, run_artifacts)
-    return (*final, fingerprint)
-
-
 def baseline_gate(conn: sqlite3.Connection) -> BaselineRun:
-    """Phase 1C's entry check: raises unless the latest baseline succeeded."""
+    """Phase 1C's entry check: raises unless the latest full baseline succeeded."""
     latest = get_latest_baseline(conn)
     if latest is None:
         raise BaselineBlockedError("No baseline has been run. Run `researchforge baseline run`.")
