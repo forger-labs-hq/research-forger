@@ -14,6 +14,7 @@ import typer
 from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.contract.cli import contract_app
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
+from researchforge.execution.cli import baseline_app
 from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
@@ -38,6 +39,7 @@ app.add_typer(papers_app, name="papers")
 app.add_typer(hypotheses_app, name="hypotheses")
 app.add_typer(report_app, name="report")
 app.add_typer(contract_app, name="contract")
+app.add_typer(baseline_app, name="baseline")
 
 
 @app.command()
@@ -106,11 +108,23 @@ def _next_action(
     *,
     contract_version: int | None,
     contract_drifted: bool,
+    baseline_failed: bool = False,
 ) -> str:
     if project.mode is None or project.objective is None:
         return "researchforge project create"
     if project.mode is ProjectMode.IMPROVE_REPOSITORY and project.repository.path is None:
         return "researchforge repo scan"
+    if contract_version is not None:
+        if contract_drifted:
+            return "researchforge contract approve  # researchforge.yaml changed since approval"
+        if project.status is not ProjectStatus.BASELINED:
+            if baseline_failed:
+                return (
+                    "Baseline failed — inspect .researchforge/artifacts/baseline/ and "
+                    "re-run `researchforge baseline run`"
+                )
+            return "researchforge baseline run"
+        return "Phase 1B complete — experiment engine arrives in Phase 1C."
     if papers == 0:
         return "researchforge research search"
     if landscape == 0 or hypotheses == 0:
@@ -125,13 +139,7 @@ def _next_action(
     ):
         return "researchforge report build"
     if project.mode is ProjectMode.IMPROVE_REPOSITORY:
-        if contract_version is None:
-            return "researchforge contract generate"
-        if contract_drifted:
-            return "researchforge contract approve  # researchforge.yaml changed since approval"
-        if project.status is not ProjectStatus.BASELINED:
-            return "researchforge baseline run"
-        return "Phase 1B complete — experiment engine arrives in Phase 1C."
+        return "researchforge contract generate"
     return "Research complete — report generated. Attach a repository to run experiments."
 
 
@@ -157,6 +165,13 @@ def status(json_output: JsonOption = False) -> None:
         contract = get_active_contract(conn)
         repo_root = Path(project.repository.path) if project.repository.path else Path.cwd()
         drifted = check_contract_drift(conn, contract_path(repo_root))
+        from researchforge.domain.baseline import BaselineStatus
+        from researchforge.storage.baseline_repository import get_latest_baseline
+
+        latest_baseline = get_latest_baseline(conn)
+        baseline_failed = (
+            latest_baseline is not None and latest_baseline.status is not BaselineStatus.SUCCEEDED
+        )
 
     next_action = _next_action(
         project,
@@ -165,6 +180,7 @@ def status(json_output: JsonOption = False) -> None:
         landscape,
         contract_version=contract.contract_version if contract else None,
         contract_drifted=drifted,
+        baseline_failed=baseline_failed,
     )
 
     if json_output:

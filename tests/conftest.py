@@ -112,6 +112,90 @@ def improve_project(
     return repo
 
 
+EVAL_SCRIPTS = Path(__file__).parent / "fixtures" / "eval_scripts"
+
+CONTRACT_TEMPLATE = """\
+version: 1
+project:
+  name: {name}
+  mode: improve_repository
+objective:
+  description: "Improve classification F1 without increasing latency"
+  primary_metric:
+    name: f1
+    direction: maximize
+  hard_constraints: []
+  secondary_metrics:
+    - p95_latency_ms
+repository:
+  baseline_ref: main
+execution:
+  mode: auto
+  trusted_repository: true
+  setup_command: null
+  full_command: "python benchmarks/evaluate.py"
+  result_file: artifacts/results.json
+  timeout_minutes: 5
+  cpu_limit: 1
+  memory_mb: 1024
+  max_experiments: 4
+permissions:
+  editable_paths:
+    - src/
+  protected_paths:
+    - benchmarks/
+network:
+  mode: none
+secrets:
+  forward_environment_variables: []
+validation:
+  repeat_finalists: 2
+  require_existing_tests: false
+shipping:
+  allow_branch_creation: true
+  allow_draft_pr: false
+"""
+
+
+@pytest.fixture
+def contracted_project(
+    cli_runner: CliRunner,
+    isolated_project_dir: Path,
+    repo_factory: RepoFactory,
+) -> Path:
+    """Improve-mode project with a scanned repo, eval script, and approved contract.
+
+    Returns the fixture repo path. The repo has no Dockerfile, so the auto
+    resolver deterministically lands on venv (trusted, python via requirements).
+    """
+    from researchforge.cli import app
+
+    repo = repo_factory(
+        requirements=True,
+        eval_script=(EVAL_SCRIPTS / "good.py").read_text(encoding="utf-8"),
+    )
+    (repo / "src").mkdir(exist_ok=True)
+    result = cli_runner.invoke(
+        app,
+        [
+            "project",
+            "create",
+            "--mode",
+            "improve_repository",
+            "--objective",
+            "Improve classification F1 without increasing latency",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert cli_runner.invoke(app, ["repo", "scan", str(repo)]).exit_code == 0
+
+    contract_file = repo / "researchforge.yaml"
+    contract_file.write_text(CONTRACT_TEMPLATE.format(name=repo.name), encoding="utf-8")
+    approve = cli_runner.invoke(app, ["contract", "approve", "--yes"])
+    assert approve.exit_code == 0, approve.output
+    return repo
+
+
 def _fixture_arxiv_client() -> ArxivClient:
     """Client serving fixture pages (page1 for start=0, page2 otherwise), no sleeping."""
 
