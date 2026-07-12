@@ -48,3 +48,19 @@ def synthesis_dir(base: Path | None = None) -> Path:
 def reports_dir(base: Path | None = None) -> Path:
     """Directory for generated reports."""
     return researchforge_dir(base) / REPORTS_DIR_NAME
+
+
+def contract_path(base: Path | None = None) -> Path:
+    """The user-owned experiment contract at the repository root."""
+    root = base if base is not None else Path.cwd()
+    return root / "researchforge.yaml"
+
+
+def worktrees_dir(base: Path | None = None) -> Path:
+    """Directory holding baseline/experiment worktrees (created lazily)."""
+    return researchforge_dir(base) / "worktrees"
+
+
+def artifacts_dir(base: Path | None = None) -> Path:
+    """Directory holding run artifacts (created lazily)."""
+    return researchforge_dir(base) / "artifacts"

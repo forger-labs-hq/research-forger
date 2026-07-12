@@ -1,0 +1,61 @@
+version: 1
+
+project:
+  name: adaptive-routing-study
+  mode: improve_repository
+
+objective:
+  description: >
+    Reduce average inference cost while keeping quality within
+    one percentage point of the current baseline.
+  primary_metric:
+    name: quality_score
+    direction: maximize
+  hard_constraints:
+    - name: average_cost_usd
+      operator: <=
+      value: 0.02
+    - name: quality_regression
+      operator: <=
+      value: 0.01
+  secondary_metrics:
+    - p95_latency_ms
+    - average_cost_usd
+
+repository:
+  baseline_ref: main
+
+execution:
+  mode: auto
+  trusted_repository: true
+  setup_command: python -m pip install -e .
+  screening_command: python benchmarks/evaluate.py --subset screening
+  full_command: python benchmarks/evaluate.py --subset full
+  result_file: artifacts/results.json
+  timeout_minutes: 20
+  cpu_limit: 2
+  memory_mb: 4096
+  max_experiments: 8
+
+permissions:
+  editable_paths:
+    - src/
+    - config/
+  protected_paths:
+    - benchmarks/
+    - test_data/
+    - evaluator/
+
+network:
+  mode: none
+
+secrets:
+  forward_environment_variables: []
+
+validation:
+  repeat_finalists: 3
+  require_existing_tests: true
+
+shipping:
+  allow_branch_creation: true
+  allow_draft_pr: false

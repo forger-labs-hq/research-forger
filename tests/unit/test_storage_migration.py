@@ -23,6 +23,7 @@ _V2_TABLE_NAMES = {
     "evidence_claims",
     "hypotheses",
 }
+_V3_TABLE_NAMES = {"contracts", "baseline_runs"}
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
@@ -45,7 +46,7 @@ def _build_v1_db(path: Path) -> None:
     conn.close()
 
 
-def test_v1_db_upgrades_to_v2_preserving_data(tmp_path: Path) -> None:
+def test_v1_db_upgrades_to_current_preserving_data(tmp_path: Path) -> None:
     db_file = tmp_path / "researchforge.db"
     _build_v1_db(db_file)
 
@@ -53,7 +54,7 @@ def test_v1_db_upgrades_to_v2_preserving_data(tmp_path: Path) -> None:
     try:
         ensure_schema(conn)
 
-        assert _table_names(conn) >= _V2_TABLE_NAMES
+        assert _table_names(conn) >= _V2_TABLE_NAMES | _V3_TABLE_NAMES
 
         version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
             "value"
@@ -67,12 +68,12 @@ def test_v1_db_upgrades_to_v2_preserving_data(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_fresh_db_gets_v2_directly(tmp_path: Path) -> None:
+def test_fresh_db_gets_current_schema_directly(tmp_path: Path) -> None:
     conn = get_connection(tmp_path / "researchforge.db")
     try:
         ensure_schema(conn)
 
-        assert {"meta", "projects"} | _V2_TABLE_NAMES <= _table_names(conn)
+        assert {"meta", "projects"} | _V2_TABLE_NAMES | _V3_TABLE_NAMES <= _table_names(conn)
         version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
             "value"
         ]
@@ -86,6 +87,6 @@ def test_ensure_schema_is_idempotent(tmp_path: Path) -> None:
     try:
         ensure_schema(conn)
         ensure_schema(conn)  # must not raise
-        assert _table_names(conn) >= _V2_TABLE_NAMES
+        assert _table_names(conn) >= _V2_TABLE_NAMES | _V3_TABLE_NAMES
     finally:
         conn.close()
