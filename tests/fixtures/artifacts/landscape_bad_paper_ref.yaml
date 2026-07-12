@@ -1,0 +1,7 @@
+summary: A landscape citing a paper that was never retrieved.
+directions:
+  - direction_id: dir-001
+    name: Phantom direction
+    description: Cites a paper the store has never seen.
+    paper_ids:
+      - arxiv:9999.99999

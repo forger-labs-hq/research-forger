@@ -1,0 +1,13 @@
+hypotheses:
+  - hypothesis_id: hyp-001
+    title: Same paper supports and contradicts
+    claim: Contradictory citation usage.
+    rationale: Testing the overlap rule.
+    supporting_paper_ids:
+      - arxiv:2401.12345
+    contradicting_paper_ids:
+      - arxiv:2401.12345
+    feasibility: low
+    estimated_effort: low
+    novelty_confidence: unknown
+    proposed_experiment: n/a but non-empty.

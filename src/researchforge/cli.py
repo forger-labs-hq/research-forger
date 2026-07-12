@@ -1,20 +1,26 @@
-"""ResearchForge CLI shell: `doctor`, `init`, `status`."""
+"""ResearchForge CLI shell."""
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
 from uuid import uuid4
 
 import typer
 
-from researchforge.config.paths import db_path, is_initialized, researchforge_dir
-from researchforge.domain.project import Project, ProjectStatus
-from researchforge.storage.db import get_connection, initialize_schema
+from researchforge.config.paths import is_initialized, researchforge_dir
+from researchforge.domain.project import Project, ProjectMode, ProjectStatus
+from researchforge.hypotheses.cli import hypotheses_app
+from researchforge.project.cli import project_app
+from researchforge.reporting.cli import report_app
+from researchforge.repository.cli import repo_app
+from researchforge.research.cli import papers_app, research_app
+from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
+from researchforge.utils.output import JsonOption, echo_model
 from researchforge.utils.system_checks import run_all_checks
 
 app = typer.Typer(
@@ -24,7 +30,12 @@ app = typer.Typer(
     help="From papers to proof.",
 )
 
-JsonOption = Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON output.")]
+app.add_typer(project_app, name="project")
+app.add_typer(repo_app, name="repo")
+app.add_typer(research_app, name="research")
+app.add_typer(papers_app, name="papers")
+app.add_typer(hypotheses_app, name="hypotheses")
+app.add_typer(report_app, name="report")
 
 
 @app.command()
@@ -64,14 +75,42 @@ def init(json_output: JsonOption = False) -> None:
         created_at=now,
         updated_at=now,
     )
-    with closing(get_connection(db_path())) as conn:
-        initialize_schema(conn)
+    with closing(open_project_db()) as conn:
         insert_project(conn, project)
 
     if json_output:
-        typer.echo(project.model_dump_json(indent=2))
+        echo_model(project)
     else:
         typer.echo(f"Initialized ResearchForge project '{project.name}' in {researchforge_dir()}")
+
+
+_COUNT_QUERIES = {
+    "papers": "SELECT COUNT(*) AS n FROM papers",
+    "hypotheses": "SELECT COUNT(*) AS n FROM hypotheses",
+    "landscape": "SELECT COUNT(*) AS n FROM landscape",
+}
+
+
+def _count(conn: sqlite3.Connection, table: str) -> int:
+    row = conn.execute(_COUNT_QUERIES[table]).fetchone()
+    return int(row["n"])
+
+
+def _next_action(project: Project, papers: int, hypotheses: int, landscape: int) -> str:
+    if project.mode is None or project.objective is None:
+        return "researchforge project create"
+    if project.mode is ProjectMode.IMPROVE_REPOSITORY and project.repository.path is None:
+        return "researchforge repo scan"
+    if papers == 0:
+        return "researchforge research search"
+    if landscape == 0 or hypotheses == 0:
+        return (
+            "researchforge research context — then ask Claude to write the synthesis "
+            "artifacts and import them"
+        )
+    if project.status is not ProjectStatus.REPORTED:
+        return "researchforge report build"
+    return "Phase 1A complete — report generated."
 
 
 @app.command()
@@ -81,21 +120,32 @@ def status(json_output: JsonOption = False) -> None:
         typer.echo("Not an initialized ResearchForge project. Run `researchforge init`.")
         raise typer.Exit(code=1)
 
-    with closing(get_connection(db_path())) as conn:
+    with closing(open_project_db()) as conn:
         project = get_project(conn)
-    if project is None:
-        typer.echo("Project database exists but no project record was found.")
-        raise typer.Exit(code=1)
+        if project is None:
+            typer.echo("Project database exists but no project record was found.")
+            raise typer.Exit(code=1)
+        papers = _count(conn, "papers")
+        hypotheses = _count(conn, "hypotheses")
+        landscape = _count(conn, "landscape")
+
+    next_action = _next_action(project, papers, hypotheses, landscape)
 
     if json_output:
-        typer.echo(project.model_dump_json(indent=2))
+        payload = project.model_dump(mode="json")
+        payload["counts"] = {"papers": papers, "hypotheses": hypotheses, "landscape": landscape}
+        payload["next_action"] = next_action
+        typer.echo(json.dumps(payload, indent=2))
     else:
-        typer.echo(f"Name:      {project.name}")
-        typer.echo(f"Mode:      {project.mode.value if project.mode else 'unset'}")
-        typer.echo(f"Objective: {project.objective or 'unset'}")
-        typer.echo(f"Status:    {project.status.value}")
-        typer.echo(f"Created:   {project.created_at.isoformat()}")
-        typer.echo(f"Updated:   {project.updated_at.isoformat()}")
+        typer.echo(f"Name:       {project.name}")
+        typer.echo(f"Mode:       {project.mode.value if project.mode else 'unset'}")
+        typer.echo(f"Objective:  {project.objective or 'unset'}")
+        typer.echo(f"Status:     {project.status.value}")
+        typer.echo(f"Papers:     {papers}")
+        typer.echo(f"Hypotheses: {hypotheses}")
+        typer.echo(f"Created:    {project.created_at.isoformat()}")
+        typer.echo(f"Updated:    {project.updated_at.isoformat()}")
+        typer.echo(f"Next:       {next_action}")
 
 
 def main() -> None:
