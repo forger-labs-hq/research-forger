@@ -31,6 +31,7 @@ class ProjectStatus(StrEnum):
     REPORTED = "reported"  # research report generated
     CONTRACTED = "contracted"  # experiment contract approved
     BASELINED = "baselined"  # baseline run succeeded
+    VALIDATED = "validated"  # at least one experiment validated
 
 
 class RepositoryMetadata(BaseModel):

@@ -22,6 +22,8 @@ class ResearchSettings(BaseModel):
     hypothesis_min: int = Field(default=3, ge=1)
     hypothesis_max: int = Field(default=7, ge=1)
     report_dir: str = "reports"
+    screening_reject_margin_pct: float = Field(default=10.0, ge=0.0)
+    tradeoff_material_pct: float = Field(default=5.0, ge=0.0)
 
 
 def load_settings(base: Path | None = None) -> ResearchSettings:
