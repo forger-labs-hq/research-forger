@@ -196,6 +196,47 @@ def contracted_project(
     return repo
 
 
+@pytest.fixture
+def baselined_project(cli_runner: CliRunner, contracted_project: Path) -> Path:
+    """Contracted project with a stored hypothesis and a successful venv baseline.
+
+    Returns the fixture repo path (cwd holds the project db and staging dirs).
+    """
+    from contextlib import closing
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
+
+    from researchforge.cli import app
+    from researchforge.domain.hypothesis import (
+        Hypothesis,
+        Level,
+        NoveltyConfidence,
+    )
+    from researchforge.storage.db import open_project_db
+    from researchforge.storage.hypothesis_repository import replace_hypotheses
+    from researchforge.storage.project_repository import get_project
+
+    _ = _datetime.now(_UTC)
+    hypothesis = Hypothesis(
+        hypothesis_id="hyp-001",
+        title="Caching improves F1 cheaply",
+        claim="Memoizing hot paths improves F1 without latency cost.",
+        rationale="Fixture rationale.",
+        feasibility=Level.HIGH,
+        estimated_effort=Level.LOW,
+        novelty_confidence=NoveltyConfidence.UNKNOWN,
+        proposed_experiment="Apply caching variants and benchmark.",
+    )
+    with closing(open_project_db()) as conn:
+        project = get_project(conn)
+        assert project is not None
+        replace_hypotheses(conn, project.id, [hypothesis])
+
+    result = cli_runner.invoke(app, ["baseline", "run"])
+    assert result.exit_code == 0, result.output
+    return contracted_project
+
+
 def _fixture_arxiv_client() -> ArxivClient:
     """Client serving fixture pages (page1 for start=0, page2 otherwise), no sleeping."""
 
