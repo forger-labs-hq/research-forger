@@ -19,3 +19,29 @@ def echo_model(model: BaseModel) -> None:
 def echo_json(payload: Any) -> None:
     """Print an arbitrary JSON-serializable payload."""
     typer.echo(json.dumps(payload, indent=2, default=str))
+
+
+def echo_import_result(
+    errors: list[str], warnings: list[str], success_message: str, json_output: bool
+) -> None:
+    """Standard rendering for artifact import outcomes (both human and --json).
+
+    With --json, invalid artifacts produce {"status": "invalid", "errors": [...]}
+    so a synthesis author (Claude) can self-correct and retry.
+    """
+    if json_output:
+        payload = {
+            "status": "ok" if not errors else "invalid",
+            "errors": errors,
+            "warnings": warnings,
+        }
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        for warning in warnings:
+            typer.echo(f"warning: {warning}")
+        for error in errors:
+            typer.echo(f"error: {error}")
+        if not errors:
+            typer.echo(success_message)
+    if errors:
+        raise typer.Exit(code=1)

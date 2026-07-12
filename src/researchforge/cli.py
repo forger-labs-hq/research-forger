@@ -13,6 +13,7 @@ import typer
 
 from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
+from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
@@ -32,6 +33,7 @@ app.add_typer(project_app, name="project")
 app.add_typer(repo_app, name="repo")
 app.add_typer(research_app, name="research")
 app.add_typer(papers_app, name="papers")
+app.add_typer(hypotheses_app, name="hypotheses")
 
 
 @app.command()

@@ -13,12 +13,14 @@ from researchforge.config.settings import load_settings
 from researchforge.domain.paper import Paper
 from researchforge.research.arxiv_client import ArxivClient, ArxivError
 from researchforge.research.context_export import build_context, write_context
+from researchforge.research.importers import import_landscape
 from researchforge.research.search_service import CitedPapersError, run_search
 from researchforge.storage.db import open_project_db
 from researchforge.storage.paper_repository import get_paper, list_papers
 from researchforge.storage.project_repository import get_project
 from researchforge.storage.scan_repository import get_latest_scan
-from researchforge.utils.output import JsonOption, echo_model
+from researchforge.storage.synthesis_repository import get_landscape
+from researchforge.utils.output import JsonOption, echo_import_result, echo_model
 
 research_app = typer.Typer(name="research", no_args_is_help=True, help="Paper discovery.")
 papers_app = typer.Typer(name="papers", no_args_is_help=True, help="Stored paper records.")
@@ -134,6 +136,66 @@ def context(
     typer.echo("Then import them:")
     typer.echo("  researchforge research landscape --import <landscape file>")
     typer.echo("  researchforge hypotheses import <hypotheses file>")
+
+
+@research_app.command()
+def landscape(
+    import_file: Annotated[
+        Path | None,
+        typer.Option("--import", "-i", help="Validate and import a landscape artifact."),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Show the stored research landscape, or import one with --import."""
+    with closing(open_project_db()) as conn:
+        project = get_project(conn)
+        if project is None:
+            typer.echo("No project found. Run `researchforge project create` first.")
+            raise typer.Exit(code=1)
+
+        if import_file is not None:
+            result = import_landscape(conn, import_file, project.id)
+            stored = get_landscape(conn) if result.ok else None
+            success = (
+                f"Landscape imported: {len(stored.directions)} direction(s), "
+                f"{len(stored.paper_annotations)} paper annotation(s), "
+                f"{len(stored.evidence)} evidence claim(s)."
+                if stored is not None
+                else "Landscape imported."
+            )
+            echo_import_result(result.errors, result.warnings, success, json_output)
+            return
+
+        stored = get_landscape(conn)
+
+    if stored is None:
+        typer.echo(
+            "No landscape imported yet. Run `researchforge research context`, have Claude "
+            "write the artifact, then re-run with --import <file>."
+        )
+        raise typer.Exit(code=1)
+
+    if json_output:
+        echo_model(stored)
+        return
+
+    typer.echo(f"Summary: {stored.summary}")
+    for direction in stored.directions:
+        typer.echo(f"\n[{direction.direction_id}] {direction.name}")
+        typer.echo(f"  {direction.description}")
+        typer.echo(f"  Papers: {', '.join(direction.paper_ids)}")
+        for finding in direction.established_findings:
+            typer.echo(f"  finding: {finding}")
+        for contradiction in direction.contradictions:
+            typer.echo(f"  contradiction: {contradiction}")
+        for limitation in direction.limitations:
+            typer.echo(f"  limitation: {limitation}")
+        for aspect in direction.underexplored_aspects:
+            typer.echo(f"  underexplored: {aspect}")
+    typer.echo(
+        f"\n{len(stored.paper_annotations)} paper annotation(s), "
+        f"{len(stored.evidence)} evidence claim(s)."
+    )
 
 
 def _print_paper(paper: Paper) -> None:

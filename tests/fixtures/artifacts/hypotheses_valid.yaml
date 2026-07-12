@@ -1,0 +1,58 @@
+hypotheses:
+  - hypothesis_id: hyp-001
+    title: Uncertainty routing cuts cost within latency budget
+    claim: >
+      Entropy-threshold routing can reduce average inference cost by at least
+      15% without raising P95 latency, under the conditions reviewed.
+    rationale: >
+      Published cost reductions from entropy-based dispatch, combined with the
+      reported latency risks of cascades, suggest a single-hop router avoids
+      the cascade latency penalty.
+    supporting_paper_ids:
+      - arxiv:2401.12345
+    contradicting_paper_ids:
+      - arxiv:2405.98765
+    expected_impact:
+      metric: average_cost_usd
+      direction: decrease
+    feasibility: high
+    estimated_effort: medium
+    estimated_experiment_count: 4
+    novelty_confidence: unknown
+    status: speculative
+    proposed_experiment: >
+      Implement entropy-threshold routing; measure cost and P95 latency against
+      the fixed-routing baseline on the same evaluation set.
+    limitations:
+      - Threshold calibration may not transfer across domains.
+  - hypothesis_id: hyp-002
+    title: Fixed routing suffices for homogeneous traffic
+    claim: Fixed policies match adaptive routing when query difficulty is uniform.
+    rationale: Baseline studies report small gaps on homogeneous workloads.
+    supporting_paper_ids:
+      - arxiv:2312.00001
+    expected_impact:
+      metric: quality_score
+      direction: unknown
+    feasibility: medium
+    estimated_effort: low
+    novelty_confidence: low
+    proposed_experiment: >
+      Stratify the evaluation set by difficulty and compare fixed vs adaptive
+      routing per stratum.
+    limitations: []
+  - hypothesis_id: hyp-003
+    title: Calibration improves dispatch decisions
+    claim: Calibrated confidence beats raw entropy for routing decisions.
+    rationale: Reasoning from calibration literature; no direct evidence retrieved.
+    expected_impact:
+      metric: quality_score
+      direction: increase
+    feasibility: medium
+    estimated_effort: medium
+    novelty_confidence: unknown
+    proposed_experiment: >
+      Compare temperature-scaled confidence thresholds with raw entropy
+      thresholds on the same router.
+    limitations:
+      - No directly matching evidence was found in the retrieved papers.

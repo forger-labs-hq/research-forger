@@ -1,0 +1,49 @@
+summary: >
+  Retrieved work clusters into uncertainty-driven routing and fixed-policy
+  baselines; cost/quality trade-offs are reported but latency handling is
+  underexplored in the reviewed sources.
+directions:
+  - direction_id: dir-001
+    name: Uncertainty-driven routing
+    description: Routing queries between models using confidence or entropy signals.
+    paper_ids:
+      - arxiv:2401.12345
+      - arxiv:2405.98765
+    established_findings:
+      - Entropy-based dispatch reduced reported inference cost by 30%.
+    contradictions:
+      - Cascades can violate latency budgets under load, contrary to cost-only framing.
+    limitations:
+      - Reported results use small evaluation sets.
+    underexplored_aspects:
+      - Joint cost and latency constraints appear underexplored in the reviewed sources.
+  - direction_id: dir-002
+    name: Fixed routing baselines
+    description: Static policies as baselines for adaptive routing.
+    paper_ids:
+      - arxiv:2312.00001
+paper_annotations:
+  - paper_id: arxiv:2401.12345
+    evidence_strength: medium
+    method_summary: Entropy-threshold routing between small and large models.
+    reported_findings:
+      - 30% cost reduction at 99% retained quality.
+    limitations:
+      - Single benchmark family.
+    repository_relevance: null
+evidence:
+  - evidence_id: ev-001
+    paper_id: arxiv:2401.12345
+    claim: Entropy-based routing reduced inference cost by 30%.
+    evidence_type: published_claim
+    extraction_confidence: high
+  - evidence_id: ev-002
+    paper_id: arxiv:2405.98765
+    claim: Cascade latency violations likely generalize to routing systems.
+    evidence_type: interpretation
+    extraction_confidence: medium
+  - evidence_id: ev-003
+    paper_id: arxiv:2312.00001
+    claim: Fixed policies may suffice when traffic is homogeneous.
+    evidence_type: speculation
+    extraction_confidence: low

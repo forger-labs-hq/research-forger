@@ -1,0 +1,8 @@
+hypotheses:
+  - hypothesis_id: hyp-001
+    title: Missing the claim field entirely
+    rationale: This artifact forgot the claim.
+    feasibility: medium
+    estimated_effort: low
+    novelty_confidence: unknown
+    proposed_experiment: Something concrete.
