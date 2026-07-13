@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -87,11 +88,31 @@ def test_check_tool_survives_subprocess_timeout(monkeypatch: pytest.MonkeyPatch)
     assert "version unknown" in result.detail
 
 
-def test_run_all_checks_returns_four_results() -> None:
+def test_run_all_checks_returns_five_results() -> None:
     results = run_all_checks()
 
     names = {r.name for r in results}
-    assert names == {"python", "git", "docker", "gh"}
+    assert names == {"python", "git", "docker", "gh", "claude skills"}
+
+
+def test_check_claude_skills_states(isolated_project_dir: Path) -> None:
+    from researchforge.claude.installer import install_skills
+    from researchforge.utils.system_checks import check_claude_skills
+
+    result = check_claude_skills()
+    assert result.ok is True
+    assert result.required is False
+    assert result.detail == "not installed"
+    assert result.hint is not None and "claude install" in result.hint
+
+    install_skills()
+    result = check_claude_skills()
+    assert result.detail == "12/12 installed"
+
+    skill = isolated_project_dir / ".claude" / "skills" / "researchforge-run" / "SKILL.md"
+    skill.write_text("edited\n", encoding="utf-8")
+    result = check_claude_skills()
+    assert result.detail == "11/12 installed, 1 locally modified"
 
 
 def test_doctor_cli_exits_zero_when_only_optional_tools_missing(
