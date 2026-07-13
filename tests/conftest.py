@@ -347,6 +347,63 @@ def baselined_project(cli_runner: CliRunner, contracted_project: Path) -> Path:
     return contracted_project
 
 
+KNOB_PATCH_TEMPLATE = """\
+diff --git a/src/algo.py b/src/algo.py
+new file mode 100644
+--- /dev/null
++++ b/src/algo.py
+@@ -0,0 +1,2 @@
++IMPROVEMENT = {improvement}
++LATENCY = {latency}
+"""
+
+
+def stage_experiment_plan(base: Path, entries: list[tuple[str, str]]) -> Path:
+    """Write plan.yaml + patches into the handshake staging dir."""
+    staging = base / ".researchforge" / "experiments"
+    patches = staging / "patches"
+    patches.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "hypothesis_id: hyp-001",
+        "approach_summary: Knob variants.",
+        "experiments:",
+    ]
+    for key, patch_text in entries:
+        (patches / f"{key}.patch").write_text(patch_text, encoding="utf-8")
+        lines += [
+            f"  - key: {key}",
+            f"    title: Variant {key}",
+            f"    change_summary: Set knobs for {key}.",
+            f"    patch_file: patches/{key}.patch",
+        ]
+    plan = staging / "plan.yaml"
+    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return plan
+
+
+@pytest.fixture
+def validated_project(
+    cli_runner: CliRunner, funnel_project: Path, isolated_project_dir: Path
+) -> Path:
+    """Funnel project with a VALIDATED winner (exp-001) and a rejected loser
+    (exp-002, latency violator). Returns the fixture repo path."""
+    from researchforge.cli import app
+
+    plan = stage_experiment_plan(
+        isolated_project_dir,
+        [
+            ("improve", KNOB_PATCH_TEMPLATE.format(improvement=5, latency=150.0)),
+            ("hot", KNOB_PATCH_TEMPLATE.format(improvement=6, latency=250.0)),
+        ],
+    )
+    assert cli_runner.invoke(app, ["experiment", "import", str(plan)]).exit_code == 0
+    assert cli_runner.invoke(app, ["experiment", "approve", "plan-001", "--yes"]).exit_code == 0
+    assert cli_runner.invoke(app, ["experiment", "run", "plan-001"]).exit_code == 0
+    validate = cli_runner.invoke(app, ["validate", "run-001", "--yes"])
+    assert validate.exit_code == 0, validate.output
+    return funnel_project
+
+
 def _fixture_arxiv_client() -> ArxivClient:
     """Client serving fixture pages (page1 for start=0, page2 otherwise), no sleeping."""
 

@@ -21,6 +21,7 @@ from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
+from researchforge.shipping.cli import ship_app
 from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
 from researchforge.utils.output import JsonOption, echo_model
@@ -44,6 +45,7 @@ app.add_typer(baseline_app, name="baseline")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
+app.add_typer(ship_app, name="ship")
 
 
 @app.command()
@@ -119,8 +121,20 @@ def _experiment_next_action() -> str:
         return f"researchforge experiment approve {latest.plan_id}"
     if latest.status is PlanStatus.APPROVED:
         return f"researchforge experiment run {latest.plan_id}"
+    from researchforge.domain.deliverable import DeliverableKind
+    from researchforge.storage.deliverable_repository import list_deliverables
+
+    with closing(open_project_db()) as conn:
+        branch_deliverables = list_deliverables(conn, kind=DeliverableKind.BRANCH)
     if any(e.status is ExperimentStatus.VALIDATED for e in experiments):
-        return "Phase 1C complete — shipping arrives in Phase 1D."
+        return "researchforge ship branch  # reconstruct the validated winner as a clean branch"
+    if any(e.status is ExperimentStatus.IMPLEMENTATION_READY for e in experiments):
+        if branch_deliverables:
+            return (
+                f"Shipped as branch {branch_deliverables[-1].location!r}. Next: "
+                "researchforge report build, then optionally researchforge ship pr"
+            )
+        return "researchforge report build"
     return f"researchforge experiment run {latest.plan_id}  # or plan a new batch"
 
 

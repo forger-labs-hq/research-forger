@@ -456,4 +456,4 @@ def validate_command(
             f"({summary.succeeded_attempts}/{summary.attempts} attempts, {spread})"
         )
     if any(s.outcome is ExperimentStatus.VALIDATED for s in outcome.summaries):
-        typer.echo("Phase 1C complete — shipping arrives in Phase 1D.")
+        typer.echo("Next: researchforge ship branch")

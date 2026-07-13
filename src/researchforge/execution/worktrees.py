@@ -132,6 +132,55 @@ class WorktreeManager:
                 expect_rename_source = True
         return paths
 
+    def check_branch_name(self, name: str) -> bool:
+        """Whether `name` is a valid git branch name."""
+        try:
+            self._git("check-ref-format", "--branch", name)
+        except WorktreeError:
+            return False
+        return True
+
+    def branch_exists(self, name: str) -> bool:
+        try:
+            self._git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}")
+        except WorktreeError:
+            return False
+        return True
+
+    def create_branch(self, name: str, sha: str) -> None:
+        """Create a branch ref at `sha` — never moves HEAD or any existing ref."""
+        if self.branch_exists(name):
+            raise WorktreeError(f"Branch {name!r} already exists; refusing to move it.")
+        self._git("branch", name, sha)
+
+    def delete_branch(self, name: str) -> None:
+        self._git("branch", "-D", name)
+
+    def commit_all_in_worktree(self, worktree: Path, message_file: Path) -> str:
+        """Stage everything in a worktree and commit; returns the new sha.
+
+        Requires the user's git identity to be configured — the commit is
+        authored by the user, never by a synthetic identity.
+        """
+        try:
+            self._git("-C", str(worktree), "config", "user.email")
+            self._git("-C", str(worktree), "config", "user.name")
+        except WorktreeError:
+            raise WorktreeError(
+                "Git identity is not configured — set user.name and user.email "
+                "(git config) so the shipped commit is authored by you."
+            ) from None
+        self._git("-C", str(worktree), "add", "-A")
+        self._git("-C", str(worktree), "commit", "-F", str(message_file))
+        return self._git("-C", str(worktree), "rev-parse", "HEAD")
+
+    def parent_of(self, sha: str) -> str:
+        return self._git("rev-parse", f"{sha}^")
+
+    def diff_names(self, base: str, head: str) -> list[str]:
+        output = self._git("diff", "--name-only", "-z", base, head, strip=False)
+        return [entry for entry in output.split("\0") if entry]
+
     def ensure_ignored(self) -> None:
         """Make git ignore `.researchforge/` via .git/info/exclude (local-only)."""
         git_dir = Path(self._git("rev-parse", "--git-common-dir"))

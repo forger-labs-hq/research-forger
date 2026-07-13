@@ -244,7 +244,7 @@ class TestValidateEndToEnd:
         # Status + results reflect validation.
         status = json.loads(cli_runner.invoke(app, ["status", "--json"]).output)
         assert status["status"] == "validated"
-        assert "1D" in status["next_action"]
+        assert "ship branch" in status["next_action"]
 
         shown = json.loads(
             cli_runner.invoke(app, ["experiment", "show", "exp-001", "--json"]).output
