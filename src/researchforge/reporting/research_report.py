@@ -43,6 +43,106 @@ def _paper_line(paper: Paper) -> str:
     )
 
 
+def hypothesis_section(hypothesis: Hypothesis) -> list[str]:
+    """Public alias used by the engineering report and research package."""
+    return _hypothesis_section(hypothesis)
+
+
+def landscape_sections(
+    landscape: ResearchLandscape | None, papers_by_id: dict[str, Paper]
+) -> list[str]:
+    """Landscape rendering shared by the research and engineering reports."""
+    evidence: list[EvidenceClaim] = landscape.evidence if landscape else []
+    lines: list[str] = ["## Research landscape", ""]
+    if landscape is None:
+        lines += ["No landscape has been imported yet.", ""]
+        return lines
+    lines += [landscape.summary, ""]
+    for direction in landscape.directions:
+        lines += [
+            f"### {direction.direction_id}: {direction.name}",
+            "",
+            direction.description,
+            "",
+            "| Paper | Title | Year | Relevance | Evidence strength |",
+            "|---|---|---|---|---|",
+        ]
+        for paper_id in direction.paper_ids:
+            paper = papers_by_id.get(paper_id)
+            if paper is not None:
+                lines.append(_paper_line(paper))
+        lines.append("")
+
+        published = [
+            e
+            for e in evidence
+            if e.paper_id in direction.paper_ids and e.evidence_type is EvidenceType.PUBLISHED_CLAIM
+        ]
+        interpretations = [
+            e
+            for e in evidence
+            if e.paper_id in direction.paper_ids and e.evidence_type is EvidenceType.INTERPRETATION
+        ]
+        if published:
+            lines.append("**Published claims:**")
+            lines.extend(
+                f"- {e.claim} [{e.paper_id}] (confidence: {e.extraction_confidence.value})"
+                for e in published
+            )
+            lines.append("")
+        if interpretations:
+            lines.append("**Interpretations (ResearchForge reading):**")
+            lines.extend(f"- {e.claim} [{e.paper_id}]" for e in interpretations)
+            lines.append("")
+        if direction.contradictions:
+            lines.append("**Contradictions:**")
+            lines.extend(f"- {c}" for c in direction.contradictions)
+            lines.append("")
+        if direction.limitations:
+            lines.append("**Limitations in prior work:**")
+            lines.extend(f"- {limitation}" for limitation in direction.limitations)
+            lines.append("")
+        if direction.underexplored_aspects:
+            lines.append("**Underexplored in the reviewed sources:**")
+            lines.extend(f"- {aspect}" for aspect in direction.underexplored_aspects)
+            lines.append("")
+    return lines
+
+
+def references_section(
+    landscape: ResearchLandscape | None,
+    hypotheses: list[Hypothesis],
+    papers_by_id: dict[str, Paper],
+) -> list[str]:
+    """References list for every cited paper (shared with the package)."""
+    evidence: list[EvidenceClaim] = landscape.evidence if landscape else []
+    cited_ids: set[str] = set()
+    if landscape is not None:
+        for direction in landscape.directions:
+            cited_ids.update(direction.paper_ids)
+        cited_ids.update(a.paper_id for a in landscape.paper_annotations)
+        cited_ids.update(e.paper_id for e in evidence)
+    for hypothesis in hypotheses:
+        cited_ids.update(hypothesis.supporting_paper_ids)
+        cited_ids.update(hypothesis.contradicting_paper_ids)
+
+    lines = ["## References", ""]
+    for paper_id in sorted(cited_ids):
+        paper = papers_by_id.get(paper_id)
+        if paper is None:
+            continue
+        authors = ", ".join(paper.authors)
+        link = paper.pdf_url or paper.source_url
+        lines.append(
+            f"- **{paper_id}** — {authors}. *{paper.title}* "
+            f"({paper.published_at.year}). {', '.join(paper.categories)}. <{link}>"
+        )
+    if not cited_ids:
+        lines.append("No papers cited yet.")
+    lines.append("")
+    return lines
+
+
 def _hypothesis_section(hypothesis: Hypothesis) -> list[str]:
     lines = [
         f"### {hypothesis.hypothesis_id}: {hypothesis.title}",
@@ -144,61 +244,7 @@ def build_research_report(
         lines.append("")
 
     # 4. Research landscape
-    lines += ["## Research landscape", ""]
-    if landscape is None:
-        lines += ["No landscape has been imported yet.", ""]
-    else:
-        lines += [landscape.summary, ""]
-        for direction in landscape.directions:
-            lines += [
-                f"### {direction.direction_id}: {direction.name}",
-                "",
-                direction.description,
-                "",
-                "| Paper | Title | Year | Relevance | Evidence strength |",
-                "|---|---|---|---|---|",
-            ]
-            for paper_id in direction.paper_ids:
-                paper = papers_by_id.get(paper_id)
-                if paper is not None:
-                    lines.append(_paper_line(paper))
-            lines.append("")
-
-            published = [
-                e
-                for e in evidence
-                if e.paper_id in direction.paper_ids
-                and e.evidence_type is EvidenceType.PUBLISHED_CLAIM
-            ]
-            interpretations = [
-                e
-                for e in evidence
-                if e.paper_id in direction.paper_ids
-                and e.evidence_type is EvidenceType.INTERPRETATION
-            ]
-            if published:
-                lines.append("**Published claims:**")
-                lines.extend(
-                    f"- {e.claim} [{e.paper_id}] (confidence: {e.extraction_confidence.value})"
-                    for e in published
-                )
-                lines.append("")
-            if interpretations:
-                lines.append("**Interpretations (ResearchForge reading):**")
-                lines.extend(f"- {e.claim} [{e.paper_id}]" for e in interpretations)
-                lines.append("")
-            if direction.contradictions:
-                lines.append("**Contradictions:**")
-                lines.extend(f"- {c}" for c in direction.contradictions)
-                lines.append("")
-            if direction.limitations:
-                lines.append("**Limitations in prior work:**")
-                lines.extend(f"- {limitation}" for limitation in direction.limitations)
-                lines.append("")
-            if direction.underexplored_aspects:
-                lines.append("**Underexplored in the reviewed sources:**")
-                lines.extend(f"- {aspect}" for aspect in direction.underexplored_aspects)
-                lines.append("")
+    lines += landscape_sections(landscape, papers_by_id)
 
     # 5. Hypotheses
     lines += ["## Hypotheses (all speculative until tested)", ""]
@@ -221,29 +267,6 @@ def build_research_report(
         lines.append("")
 
     # 7. References
-    cited_ids: set[str] = set()
-    if landscape is not None:
-        for direction in landscape.directions:
-            cited_ids.update(direction.paper_ids)
-        cited_ids.update(a.paper_id for a in landscape.paper_annotations)
-        cited_ids.update(e.paper_id for e in evidence)
-    for hypothesis in hypotheses:
-        cited_ids.update(hypothesis.supporting_paper_ids)
-        cited_ids.update(hypothesis.contradicting_paper_ids)
-
-    lines += ["## References", ""]
-    for paper_id in sorted(cited_ids):
-        paper = papers_by_id.get(paper_id)
-        if paper is None:
-            continue
-        authors = ", ".join(paper.authors)
-        link = paper.pdf_url or paper.source_url
-        lines.append(
-            f"- **{paper_id}** — {authors}. *{paper.title}* "
-            f"({paper.published_at.year}). {', '.join(paper.categories)}. <{link}>"
-        )
-    if not cited_ids:
-        lines.append("No papers cited yet.")
-    lines.append("")
+    lines += references_section(landscape, hypotheses, papers_by_id)
 
     return "\n".join(lines)

@@ -7,10 +7,12 @@ CLI. It studies relevant literature, maps promising methods to your idea or
 repository, creates testable hypotheses, and benchmarks competing
 implementations against a controlled baseline in local, isolated workspaces.
 
-**Status:** Phase 1A — research intelligence MVP. Project creation,
-repository scanning, arXiv discovery, research landscape + hypotheses (via
-the Claude synthesis handshake), and a research-only Markdown report. No
-experiment execution yet (that's Phase 1B/1C). See
+**Status:** Phase 1D — the full local pipeline. Research intelligence
+(arXiv discovery, landscape, hypotheses), the experiment contract +
+baseline, a controlled experiment funnel (screening → full → validation)
+over Claude-authored patch variants, and shipping: a clean branch
+reconstructed from the baseline, an opt-in draft PR, the engineering
+report, and a research package. Claude Code skills arrive in Phase 1E. See
 [docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md](docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md)
 for the roadmap, [docs/architecture.md](docs/architecture.md) for code
 layout, and [docs/research-mode.md](docs/research-mode.md) for the research
@@ -41,9 +43,30 @@ researchforge hypotheses import .researchforge/synthesis/hypotheses.yaml
 researchforge report build             # citation-backed Markdown report
 ```
 
-For an existing repository, use `--mode improve_repository` and run
-`researchforge repo scan` after project creation. `researchforge status`
-always shows the next step. Every command supports `--json`.
+## Quickstart — improve a repository
+
+```bash
+researchforge project create --mode improve_repository --objective "Improve F1 ..."
+researchforge repo scan
+researchforge contract generate     # edit researchforge.yaml, then:
+researchforge contract approve      # typed approval -> immutable contract
+researchforge baseline run          # frozen baseline in an isolated worktree
+researchforge experiment plan hyp-001
+# Claude writes plan.yaml + patches/ (see docs/experiment-mode.md)
+researchforge experiment import .researchforge/experiments/plan.yaml
+researchforge experiment approve plan-001
+researchforge experiment run plan-001    # screening -> full, one at a time
+researchforge results show run-001       # ranking, Pareto trade-offs, rejections
+researchforge validate run-001           # repeated runs -> validated
+researchforge ship branch                # clean local branch (never pushed)
+researchforge report build               # engineering report
+researchforge ship pr                    # opt-in: push + DRAFT PR via gh
+researchforge paper package              # research bundle (BibTeX, outline, data)
+```
+
+`researchforge status` always shows the next step. Every command supports
+`--json`. See [docs/experiment-mode.md](docs/experiment-mode.md) for the
+isolation and safety guarantees.
 
 ## License
 
