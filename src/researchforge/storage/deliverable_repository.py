@@ -28,6 +28,22 @@ def insert_deliverable(conn: sqlite3.Connection, project_id: str, deliverable: D
         )
 
 
+def record_deliverable_once(
+    conn: sqlite3.Connection, project_id: str, deliverable: Deliverable
+) -> None:
+    """Insert unless a deliverable of the same kind and location already exists.
+
+    Rebuildable outputs (reports, packages) overwrite the same path; recording
+    every rebuild would accumulate duplicate rows.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM deliverables WHERE project_id = ? AND kind = ? AND location = ?",
+        (project_id, deliverable.kind.value, deliverable.location),
+    ).fetchone()
+    if row is None:
+        insert_deliverable(conn, project_id, deliverable)
+
+
 def list_deliverables(
     conn: sqlite3.Connection,
     kind: DeliverableKind | None = None,

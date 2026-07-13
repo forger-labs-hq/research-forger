@@ -40,7 +40,10 @@ def build(
     from researchforge.domain.deliverable import Deliverable, DeliverableKind
     from researchforge.storage.baseline_repository import get_latest_successful_baseline
     from researchforge.storage.contract_repository import get_active_contract
-    from researchforge.storage.deliverable_repository import insert_deliverable, list_deliverables
+    from researchforge.storage.deliverable_repository import (
+        list_deliverables,
+        record_deliverable_once,
+    )
 
     with closing(open_project_db()) as conn:
         project = get_project(conn)
@@ -115,7 +118,7 @@ def build(
         path.write_text(markdown, encoding="utf-8")
 
         if engineering:
-            insert_deliverable(
+            record_deliverable_once(
                 conn,
                 project.id,
                 Deliverable(

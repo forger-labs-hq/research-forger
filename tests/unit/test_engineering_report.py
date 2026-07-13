@@ -62,6 +62,22 @@ class TestEngineeringReport:
         assert "researchforge/caching-improves-f1-cheaply" in text
         assert "Not yet shipped" not in text
 
+    def test_rebuild_records_single_deliverable(
+        self, cli_runner: CliRunner, validated_project: Path, isolated_project_dir: Path
+    ) -> None:
+        from contextlib import closing
+
+        from researchforge.domain.deliverable import DeliverableKind
+        from researchforge.storage.db import open_project_db
+        from researchforge.storage.deliverable_repository import list_deliverables
+
+        assert cli_runner.invoke(app, ["report", "build"]).exit_code == 0
+        assert cli_runner.invoke(app, ["report", "build"]).exit_code == 0
+
+        with closing(open_project_db()) as conn:
+            reports = list_deliverables(conn, kind=DeliverableKind.ENGINEERING_REPORT)
+        assert len(reports) == 1
+
     def test_research_only_report_unchanged(
         self, cli_runner: CliRunner, initialized_project: Path, patched_arxiv: None
     ) -> None:

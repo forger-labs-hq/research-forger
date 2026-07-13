@@ -35,7 +35,7 @@ def package_command(
 ) -> None:
     """Generate the research package: report, related work, BibTeX, outline, data."""
     from researchforge.domain.deliverable import Deliverable, DeliverableKind
-    from researchforge.storage.deliverable_repository import insert_deliverable
+    from researchforge.storage.deliverable_repository import record_deliverable_once
     from researchforge.storage.paper_repository import list_papers
     from researchforge.storage.project_repository import get_project
 
@@ -50,7 +50,7 @@ def package_command(
 
         target = output or (researchforge_dir() / PACKAGE_DIR_NAME)
         result = build_research_package(conn, target)
-        insert_deliverable(
+        record_deliverable_once(
             conn,
             project.id,
             Deliverable(
