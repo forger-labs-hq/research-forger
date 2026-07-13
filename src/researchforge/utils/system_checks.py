@@ -92,5 +92,26 @@ def check_gh() -> CheckResult:
     )
 
 
+def check_claude_skills() -> CheckResult:
+    """Informational: whether the Claude Code skills are installed here."""
+    from researchforge.claude.installer import SkillAction, skills_status
+
+    states = [result.action for result in skills_status().results]
+    installed = sum(1 for a in states if a is SkillAction.UNCHANGED)
+    modified = sum(1 for a in states if a is SkillAction.MODIFIED)
+    if installed + modified == 0:
+        return CheckResult(
+            name="claude skills",
+            ok=True,
+            required=False,
+            detail="not installed",
+            hint="Run `researchforge claude install` to use ResearchForge from Claude Code.",
+        )
+    detail = f"{installed}/{len(states)} installed"
+    if modified:
+        detail += f", {modified} locally modified"
+    return CheckResult(name="claude skills", ok=True, required=False, detail=detail)
+
+
 def run_all_checks() -> list[CheckResult]:
-    return [check_python(), check_git(), check_docker(), check_gh()]
+    return [check_python(), check_git(), check_docker(), check_gh(), check_claude_skills()]

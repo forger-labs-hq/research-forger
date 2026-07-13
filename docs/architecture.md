@@ -1,11 +1,12 @@
-# Architecture — Phase 1 (0 through 1D)
+# Architecture — Phase 1 (0 through 1E)
 
-> This document describes the codebase after **Phase 1D** (shipping and
-> research outputs). See
+> This document describes the codebase after **Phase 1E** (Claude Code
+> experience). See
 > [RESEARCHFORGE_PHASED_BUILD_SPEC.md](RESEARCHFORGE_PHASED_BUILD_SPEC.md)
 > for the full product spec, [research-mode.md](research-mode.md) for the
-> research workflow, and [experiment-mode.md](experiment-mode.md) for the
-> contract → baseline → funnel → shipping workflow.
+> research workflow, [experiment-mode.md](experiment-mode.md) for the
+> contract → baseline → funnel → shipping workflow, and
+> [claude-mode.md](claude-mode.md) for driving everything from Claude Code.
 
 ## Module layout
 
@@ -39,11 +40,18 @@ src/researchforge/
 ├── experiments/     # experiment-plan handshake (context export, patch import, CLI)
 ├── shipping/        # ship branch (clean reconstruction) + ship pr (gh seam)
 ├── reporting/       # research + engineering reports, research package, `paper package`
+├── claude/          # packaged Claude Code skills + manifest-based installer
+│   └── skills/      #   12 SKILL.md assets shipped inside the wheel
 ├── storage/         # sqlite persistence boundary (one repository module per entity)
 └── utils/           # system_checks (doctor), output (JsonOption/echo), artifact_io
 ```
 
-Still deferred: `claude/` and `claude-plugin/` (Phase 1E).
+`claude/skills/` is copied into a project's `.claude/skills/` by
+`researchforge init --claude` / `researchforge claude install`. A sha256
+manifest (`.researchforge/claude-skills-manifest.json`) tracks what was
+installed: user-modified or foreign files are never overwritten or removed
+without `--force`. Skills are UX only — no security property depends on
+them.
 
 ## Shipping safety invariants (Phase 1D)
 

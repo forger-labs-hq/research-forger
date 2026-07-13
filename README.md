@@ -7,12 +7,12 @@ CLI. It studies relevant literature, maps promising methods to your idea or
 repository, creates testable hypotheses, and benchmarks competing
 implementations against a controlled baseline in local, isolated workspaces.
 
-**Status:** Phase 1D — the full local pipeline. Research intelligence
-(arXiv discovery, landscape, hypotheses), the experiment contract +
-baseline, a controlled experiment funnel (screening → full → validation)
-over Claude-authored patch variants, and shipping: a clean branch
-reconstructed from the baseline, an opt-in draft PR, the engineering
-report, and a research package. Claude Code skills arrive in Phase 1E. See
+**Status:** Phase 1E — the full local pipeline, drivable from Claude Code.
+Research intelligence (arXiv discovery, landscape, hypotheses), the
+experiment contract + baseline, a controlled experiment funnel (screening →
+full → validation) over Claude-authored patch variants, shipping (clean
+branch, opt-in draft PR, engineering report, research package), and
+installable Claude Code skills for the whole workflow. See
 [docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md](docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md)
 for the roadmap, [docs/architecture.md](docs/architecture.md) for code
 layout, and [docs/research-mode.md](docs/research-mode.md) for the research
@@ -27,6 +27,18 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
+
+## Use from Claude Code (recommended)
+
+```bash
+researchforge init --claude     # initialize + install project skills
+```
+
+Then, in Claude Code, start with `/researchforge-start` — the skills walk
+both journeys below, calling the CLI with `--json` and asking you before
+every approval, run, and ship step. See
+[docs/claude-mode.md](docs/claude-mode.md) for details and the safety model
+(skills are UX; all enforcement is in the Python engine).
 
 ## Quickstart — explore a research idea
 
