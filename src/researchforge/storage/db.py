@@ -7,6 +7,7 @@ Schema history:
 - v3 (Phase 1B): ``contracts``, ``baseline_runs``.
 - v4 (Phase 1C): ``experiment_plans``, ``experiments``, ``experiment_runs``,
   ``experiment_executions``.
+- v5 (Phase 1D): ``deliverables``.
 
 All migrations are additive ``CREATE TABLE IF NOT EXISTS`` statements, so
 ``ensure_schema`` can run on every connection open and silently upgrade
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from researchforge.config.paths import db_path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _V1_TABLES = [
     """
@@ -192,11 +193,26 @@ _V4_TABLES = [
     """,
 ]
 
+_V5_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS deliverables (
+        deliverable_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        experiment_id TEXT,
+        location TEXT NOT NULL,
+        record TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+]
+
 _MIGRATIONS: dict[int, list[str]] = {
     1: _V1_TABLES,
     2: _V2_TABLES,
     3: _V3_TABLES,
     4: _V4_TABLES,
+    5: _V5_TABLES,
 }
 
 
