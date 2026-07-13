@@ -1,10 +1,11 @@
-# Architecture — Phase 1A
+# Architecture — Phase 1 (0 through 1D)
 
-> This document describes the codebase as it exists after **Phase 1A**
-> (research intelligence MVP). See
+> This document describes the codebase after **Phase 1D** (shipping and
+> research outputs). See
 > [RESEARCHFORGE_PHASED_BUILD_SPEC.md](RESEARCHFORGE_PHASED_BUILD_SPEC.md)
-> for the full product spec and [research-mode.md](research-mode.md) for the
-> research workflow and the Claude ↔ CLI synthesis handshake.
+> for the full product spec, [research-mode.md](research-mode.md) for the
+> research workflow, and [experiment-mode.md](experiment-mode.md) for the
+> contract → baseline → funnel → shipping workflow.
 
 ## Module layout
 
@@ -32,13 +33,27 @@ src/researchforge/
 │   ├── importers.py     # artifact validation + import (the enforcement boundary)
 │   └── cli.py           # `research` + `papers` sub-apps
 ├── hypotheses/      # `hypotheses import/list/show`
-├── reporting/       # research_report.py + `report build`
+├── contract/        # researchforge.yaml wizard/validate/approve (immutable versions)
+├── execution/       # worktrees, runners, evaluation, path guard, funnel, ranking,
+│                    #   validation, baseline — the enforcement layer
+├── experiments/     # experiment-plan handshake (context export, patch import, CLI)
+├── shipping/        # ship branch (clean reconstruction) + ship pr (gh seam)
+├── reporting/       # research + engineering reports, research package, `paper package`
 ├── storage/         # sqlite persistence boundary (one repository module per entity)
 └── utils/           # system_checks (doctor), output (JsonOption/echo), artifact_io
 ```
 
-Still deferred to later phases (spec §22): `contracts/`, `execution/`,
-`evaluation/`, `shipping/`, `claude/`, `claude-plugin/`.
+Still deferred: `claude/` and `claude-plugin/` (Phase 1E).
+
+## Shipping safety invariants (Phase 1D)
+
+- `ship branch` builds the winning commit in a temporary detached worktree
+  and materializes it with `git branch` — the user's HEAD/checkout is never
+  touched, the branch's only parent is the frozen baseline commit, and its
+  diff is asserted to equal the validated changed files. Nothing is pushed.
+- `ship pr` is opt-in twice (contract `shipping.allow_draft_pr` + typed
+  confirmation), pushes exactly one ref, and always opens a **draft** PR.
+- Every shipped artifact is recorded in the `deliverables` table.
 
 ## Key design decisions
 

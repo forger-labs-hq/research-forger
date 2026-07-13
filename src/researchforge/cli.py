@@ -19,6 +19,7 @@ from researchforge.experiments.cli import experiment_app, results_app, validate_
 from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
+from researchforge.reporting.paper_cli import paper_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
 from researchforge.shipping.cli import ship_app
@@ -46,6 +47,7 @@ app.add_typer(experiment_app, name="experiment")
 app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
 app.add_typer(ship_app, name="ship")
+app.add_typer(paper_app, name="paper")
 
 
 @app.command()
@@ -129,12 +131,17 @@ def _experiment_next_action() -> str:
     if any(e.status is ExperimentStatus.VALIDATED for e in experiments):
         return "researchforge ship branch  # reconstruct the validated winner as a clean branch"
     if any(e.status is ExperimentStatus.IMPLEMENTATION_READY for e in experiments):
-        if branch_deliverables:
-            return (
-                f"Shipped as branch {branch_deliverables[-1].location!r}. Next: "
-                "researchforge report build, then optionally researchforge ship pr"
-            )
-        return "researchforge report build"
+        with closing(open_project_db()) as conn:
+            reports = list_deliverables(conn, kind=DeliverableKind.ENGINEERING_REPORT)
+            prs = list_deliverables(conn, kind=DeliverableKind.DRAFT_PR)
+        if not reports:
+            return "researchforge report build  # engineering report for the shipped change"
+        if branch_deliverables and not prs:
+            return "researchforge ship pr  # optional draft PR — or: researchforge paper package"
+        return (
+            "Phase 1 complete — `researchforge paper package` builds the research "
+            "bundle; Claude skills arrive in Phase 1E."
+        )
     return f"researchforge experiment run {latest.plan_id}  # or plan a new batch"
 
 
