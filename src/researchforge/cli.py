@@ -15,7 +15,7 @@ from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.contract.cli import contract_app
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
 from researchforge.execution.cli import baseline_app
-from researchforge.experiments.cli import experiment_app
+from researchforge.experiments.cli import experiment_app, results_app, validate_command
 from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
@@ -42,6 +42,8 @@ app.add_typer(report_app, name="report")
 app.add_typer(contract_app, name="contract")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(experiment_app, name="experiment")
+app.add_typer(results_app, name="results")
+app.command("validate")(validate_command)
 
 
 @app.command()

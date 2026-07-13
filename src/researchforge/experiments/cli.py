@@ -37,6 +37,7 @@ from researchforge.utils.output import JsonOption, echo_import_result, echo_mode
 experiment_app = typer.Typer(
     name="experiment", no_args_is_help=True, help="Controlled experiments."
 )
+results_app = typer.Typer(name="results", no_args_is_help=True, help="Experiment results.")
 
 
 @experiment_app.command("plan")
@@ -316,3 +317,143 @@ def cancel_command(
         typer.echo(json.dumps({"plan_id": plan_id, "status": "cancelled"}, indent=2))
     else:
         typer.echo(f"{plan_id} cancelled.")
+
+
+def _format_value(value: float | None) -> str:
+    return f"{value:.4g}" if value is not None else "—"
+
+
+@results_app.command("show")
+def results_show_command(
+    run_id: Annotated[str, typer.Argument(help="e.g. run-001")],
+    json_output: JsonOption = False,
+) -> None:
+    """Show the ranked results of a run, trade-offs, and rejected history."""
+    from researchforge.config.settings import load_settings
+    from researchforge.execution.baseline import BaselineBlockedError, baseline_gate
+    from researchforge.execution.ranking import build_ranking_report
+    from researchforge.storage.contract_repository import get_active_contract
+    from researchforge.storage.experiment_repository import get_run, list_executions
+
+    with closing(open_project_db()) as conn:
+        run = get_run(conn, run_id)
+        if run is None:
+            typer.echo(f"Unknown run: {run_id}.")
+            raise typer.Exit(code=1)
+        contract = get_active_contract(conn)
+        if contract is None:
+            typer.echo("No approved contract.")
+            raise typer.Exit(code=1)
+        try:
+            baseline = baseline_gate(conn)
+        except BaselineBlockedError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from None
+        experiments = list_experiments(conn, run.plan_id)
+        executions = list_executions(conn, run_id=run_id)
+        settings = load_settings()
+
+    report = build_ranking_report(
+        run_id,
+        baseline,
+        experiments,
+        executions,
+        contract.spec,
+        tradeoff_material_pct=settings.tradeoff_material_pct,
+    )
+
+    if json_output:
+        echo_model(report)
+        return
+
+    primary = contract.spec.objective.primary_metric.name
+    base = report.baseline_row
+    typer.echo(f"Run {run_id} — primary metric: {primary}")
+    typer.echo(
+        f"  baseline    {primary}={_format_value(base.primary_value)}  "
+        + "  ".join(f"{k}={_format_value(v)}" for k, v in base.secondary_values.items())
+    )
+    for row in report.candidates:
+        marker = "*" if row.experiment_id in report.pareto_ids else " "
+        delta = f"{row.primary_delta_pct:+.1f}%" if row.primary_delta_pct is not None else "—"
+        secondaries = "  ".join(f"{k}={_format_value(v)}" for k, v in row.secondary_values.items())
+        typer.echo(
+            f"{marker} {row.experiment_id}  [{row.confidence}]  "
+            f"{primary}={_format_value(row.primary_value)} ({delta})  {secondaries}"
+        )
+    if report.single_winner:
+        typer.echo(f"Winner: {report.single_winner}")
+    elif len(report.pareto_ids) > 1:
+        typer.echo(
+            f"Pareto frontier (* above): {', '.join(report.pareto_ids)} — choose the "
+            "preferred trade-off."
+        )
+    for note in report.trade_off_notes:
+        typer.echo(f"  trade-off: {note}")
+    if report.rejected:
+        typer.echo("Rejected / failed:")
+        for row in report.rejected:
+            reason = row.decision.reason if row.decision else row.status.value
+            typer.echo(f"  {row.experiment_id}  [{row.status.value}]  {reason}")
+    for caveat in report.caveats:
+        typer.echo(f"note: {caveat}")
+
+
+def validate_command(
+    run_id: Annotated[str, typer.Argument(help="e.g. run-001")],
+    experiment: Annotated[
+        list[str] | None,
+        typer.Option("--experiment", "-e", help="Validate only these experiment ids."),
+    ] = None,
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the cost confirmation.")] = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Repeatedly re-run promising finalists to confirm or reject them (Stage 3)."""
+    from researchforge.execution.experiments import ExperimentBlockedError
+    from researchforge.execution.validation import validate_run
+    from researchforge.storage.contract_repository import get_active_contract
+    from researchforge.storage.experiment_repository import get_run as get_run_group
+    from researchforge.storage.experiment_repository import list_experiments as list_exps
+
+    with closing(open_project_db()) as conn:
+        run = get_run_group(conn, run_id)
+        contract = get_active_contract(conn)
+        if run is not None and contract is not None and not yes:
+            targets = [
+                e
+                for e in list_exps(conn, run.plan_id)
+                if e.status is ExperimentStatus.PROMISING
+                and (experiment is None or e.experiment_id in experiment)
+            ]
+            repeats = contract.spec.validation.repeat_finalists
+            worst = len(targets) * repeats * contract.spec.execution.timeout_minutes
+            typer.echo(
+                f"Will re-run the full benchmark {repeats}x for "
+                f"{len(targets)} experiment(s) (~{worst} min worst case)."
+            )
+            confirmation = typer.prompt("Type 'validate' to proceed")
+            if confirmation.strip().lower() != "validate":
+                typer.echo("Not started.")
+                raise typer.Exit(code=1)
+
+        try:
+            outcome = validate_run(conn, run_id, experiment_ids=experiment)
+        except ExperimentBlockedError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from None
+
+    if json_output:
+        typer.echo(json.dumps([s.model_dump(mode="json") for s in outcome.summaries], indent=2))
+        return
+    for summary in outcome.summaries:
+        spread = (
+            f"mean {summary.mean:.4g} ± {summary.stdev:.2g}"
+            if summary.mean is not None and summary.stdev is not None
+            else f"mean {_format_value(summary.mean)}"
+        )
+        typer.echo(
+            f"{summary.experiment_id}: {summary.outcome.value} "
+            f"({summary.succeeded_attempts}/{summary.attempts} attempts, {spread})"
+        )
+    if any(s.outcome is ExperimentStatus.VALIDATED for s in outcome.summaries):
+        typer.echo("Phase 1C complete — shipping arrives in Phase 1D.")

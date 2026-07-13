@@ -103,7 +103,11 @@ class RunSummary:
 
 
 def prepare_run(
-    conn: sqlite3.Connection, plan_id: str, docker: DockerProbe | None = None
+    conn: sqlite3.Connection,
+    plan_id: str,
+    docker: DockerProbe | None = None,
+    *,
+    allow_completed: bool = False,
 ) -> RunPreparation:
     """All gates, in order, each with an exact explanation."""
     project = get_project(conn)
@@ -131,7 +135,10 @@ def prepare_run(
         raise ExperimentBlockedError(
             f"{plan_id} is not approved — run `researchforge experiment approve {plan_id}`."
         )
-    if plan.status in (PlanStatus.COMPLETED, PlanStatus.CANCELLED):
+    blocked_states = (
+        (PlanStatus.CANCELLED,) if allow_completed else (PlanStatus.COMPLETED, PlanStatus.CANCELLED)
+    )
+    if plan.status in blocked_states:
         raise ExperimentBlockedError(f"{plan_id} is {plan.status.value} — plan a new batch.")
     if plan.contract_version != contract.contract_version:
         raise ExperimentBlockedError(
