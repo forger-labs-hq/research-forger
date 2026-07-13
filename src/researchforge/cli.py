@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import typer
 
+from researchforge.claude.cli import claude_app
 from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.contract.cli import contract_app
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
@@ -25,7 +26,7 @@ from researchforge.research.cli import papers_app, research_app
 from researchforge.shipping.cli import ship_app
 from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
-from researchforge.utils.output import JsonOption, echo_model
+from researchforge.utils.output import JsonOption
 from researchforge.utils.system_checks import run_all_checks
 
 app = typer.Typer(
@@ -48,6 +49,7 @@ app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
+app.add_typer(claude_app, name="claude")
 
 
 @app.command()
@@ -69,31 +71,62 @@ def doctor(json_output: JsonOption = False) -> None:
 
 
 @app.command()
-def init(json_output: JsonOption = False) -> None:
+def init(
+    claude: bool = typer.Option(
+        False, "--claude", help="Also install the Claude Code skills into .claude/skills/."
+    ),
+    json_output: JsonOption = False,
+) -> None:
     """Initialize a ResearchForge project in the current directory."""
-    if is_initialized():
-        if json_output:
-            typer.echo(json.dumps({"status": "already_initialized"}))
-        else:
-            typer.echo("Already initialized.")
-        return
+    from researchforge.claude.installer import InstallReport, install_skills
 
-    researchforge_dir().mkdir(parents=True, exist_ok=True)
-    now = datetime.now(UTC)
-    project = Project(
-        id=uuid4().hex,
-        name=Path.cwd().name,
-        status=ProjectStatus.INITIALIZED,
-        created_at=now,
-        updated_at=now,
-    )
-    with closing(open_project_db()) as conn:
-        insert_project(conn, project)
+    already = is_initialized()
+    project: Project | None = None
+    if not already:
+        researchforge_dir().mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        project = Project(
+            id=uuid4().hex,
+            name=Path.cwd().name,
+            status=ProjectStatus.INITIALIZED,
+            created_at=now,
+            updated_at=now,
+        )
+        with closing(open_project_db()) as conn:
+            insert_project(conn, project)
+
+    skills: InstallReport | None = install_skills() if claude else None
 
     if json_output:
-        echo_model(project)
+        payload: dict[str, object]
+        if project is not None:
+            payload = project.model_dump(mode="json")
+        else:
+            payload = {"status": "already_initialized"}
+        if skills is not None:
+            payload["skills"] = skills.model_dump()
+        typer.echo(json.dumps(payload, indent=2))
+        return
+
+    if already:
+        typer.echo("Already initialized.")
     else:
+        assert project is not None
         typer.echo(f"Initialized ResearchForge project '{project.name}' in {researchforge_dir()}")
+    if skills is not None:
+        typer.echo(f"Claude skills installed in {skills.skills_dir}:")
+        for result in skills.results:
+            typer.echo(f"  /{result.skill} ({result.action.value})")
+        if skills.conflicts:
+            typer.echo(
+                "Modified skills were left untouched; `researchforge claude install --force` "
+                "overwrites them."
+            )
+        typer.echo(
+            "Start in Claude Code with /researchforge-start, or from the CLI:\n"
+            "  researchforge project create --mode explore_research_idea --objective ...\n"
+            "  researchforge project create --mode improve_repository --objective ..."
+        )
 
 
 _COUNT_QUERIES = {
