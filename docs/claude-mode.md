@@ -30,6 +30,26 @@ records a sha256 per installed file): a skill you edited — or any other
 content in `.claude/skills/` — is never overwritten or removed without
 `--force`.
 
+Add `--user` to any of those commands to target `~/.claude/skills/` instead
+of the repository — the skills then load in **every** project on this
+machine (manifest: `~/.claude/researchforge-claude-skills-manifest.json`).
+
+## Skills not showing up?
+
+The skills are plain files — nothing about them is tied to a Claude
+account. If `/researchforge-…` doesn't appear:
+
+1. **Right directory?** Project-level skills only load when Claude Code is
+   opened in the repository that contains `.claude/skills/`. Verify with
+   `researchforge claude status` from that directory.
+2. **Switched Claude accounts?** Claude Code tracks workspace trust and
+   settings per account — after switching, the project may need to be
+   re-trusted in a fresh session before its `.claude/` content loads.
+   Restart the session in the repo and accept the trust prompt.
+3. **Want them everywhere, account-proof?** `researchforge claude install
+   --user` puts them in `~/.claude/skills/`, which applies to all projects
+   regardless of per-project state.
+
 ## The skills
 
 | Skill | What it drives |

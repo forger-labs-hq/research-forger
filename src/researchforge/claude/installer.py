@@ -61,19 +61,29 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def manifest_path(base: Path | None = None) -> Path:
+def manifest_path(base: Path | None = None, user: bool = False) -> Path:
+    if user:
+        # User-level installs have no project `.researchforge/`; keep the
+        # manifest next to the user's Claude config instead.
+        return Path.home() / ".claude" / f"researchforge-{MANIFEST_FILENAME}"
     return researchforge_dir(base) / MANIFEST_FILENAME
 
 
-def load_manifest(base: Path | None = None) -> SkillsManifest:
-    path = manifest_path(base)
+def _skills_root(base: Path | None, user: bool) -> Path:
+    if user:
+        return Path.home() / ".claude" / "skills"
+    return (base if base is not None else Path.cwd()) / CLAUDE_SKILLS_DIR
+
+
+def load_manifest(base: Path | None = None, user: bool = False) -> SkillsManifest:
+    path = manifest_path(base, user)
     if not path.is_file():
         return SkillsManifest()
     return SkillsManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def save_manifest(manifest: SkillsManifest, base: Path | None = None) -> None:
-    path = manifest_path(base)
+def save_manifest(manifest: SkillsManifest, base: Path | None = None, user: bool = False) -> None:
+    path = manifest_path(base, user)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
@@ -90,23 +100,23 @@ def list_packaged_skills() -> dict[str, str]:
     return dict(sorted(skills.items()))
 
 
-def _installed_skill_path(name: str, base: Path | None = None) -> Path:
-    root = base if base is not None else Path.cwd()
-    return root / CLAUDE_SKILLS_DIR / name / "SKILL.md"
-
-
-def install_skills(base: Path | None = None, force: bool = False) -> InstallReport:
+def install_skills(
+    base: Path | None = None, force: bool = False, user: bool = False
+) -> InstallReport:
     """Copy packaged skills into `.claude/skills/`, never clobbering user edits.
+
+    `user=True` installs into `~/.claude/skills/` (available in every project
+    and Claude account on this machine) instead of the repository.
 
     Per skill: missing -> write; unchanged since our last install (manifest
     hash matches) -> update in place; anything else -> skip unless `force`.
     """
-    root = base if base is not None else Path.cwd()
-    manifest = load_manifest(base)
+    skills_root = _skills_root(base, user)
+    manifest = load_manifest(base, user)
     results: list[SkillReport] = []
 
     for name, content in list_packaged_skills().items():
-        target = _installed_skill_path(name, base)
+        target = skills_root / name / "SKILL.md"
         packaged_hash = _sha256(content.encode("utf-8"))
         if target.is_file():
             current_hash = _sha256(target.read_bytes())
@@ -124,20 +134,22 @@ def install_skills(base: Path | None = None, force: bool = False) -> InstallRepo
             target.write_text(content, encoding="utf-8")
         if action is not SkillAction.SKIPPED_MODIFIED:
             manifest.hashes[name] = packaged_hash
-        results.append(SkillReport(skill=name, action=action, path=str(target.relative_to(root))))
+        results.append(SkillReport(skill=name, action=action, path=str(target)))
 
-    save_manifest(manifest, base)
-    return InstallReport(skills_dir=str(root / CLAUDE_SKILLS_DIR), results=results)
+    save_manifest(manifest, base, user)
+    return InstallReport(skills_dir=str(skills_root), results=results)
 
 
-def uninstall_skills(base: Path | None = None, force: bool = False) -> InstallReport:
+def uninstall_skills(
+    base: Path | None = None, force: bool = False, user: bool = False
+) -> InstallReport:
     """Remove installed skills; user-modified files are left unless `force`."""
-    root = base if base is not None else Path.cwd()
-    manifest = load_manifest(base)
+    skills_root = _skills_root(base, user)
+    manifest = load_manifest(base, user)
     results: list[SkillReport] = []
 
     for name in list_packaged_skills():
-        target = _installed_skill_path(name, base)
+        target = skills_root / name / "SKILL.md"
         recorded = manifest.hashes.get(name)
         if not target.is_file():
             action = SkillAction.MISSING
@@ -150,23 +162,23 @@ def uninstall_skills(base: Path | None = None, force: bool = False) -> InstallRe
             action = SkillAction.LEFT_MODIFIED
         if action is not SkillAction.LEFT_MODIFIED:
             manifest.hashes.pop(name, None)
-        results.append(SkillReport(skill=name, action=action, path=str(target.relative_to(root))))
+        results.append(SkillReport(skill=name, action=action, path=str(target)))
 
-    save_manifest(manifest, base)
-    return InstallReport(skills_dir=str(root / CLAUDE_SKILLS_DIR), results=results)
+    save_manifest(manifest, base, user)
+    return InstallReport(skills_dir=str(skills_root), results=results)
 
 
-def skills_status(base: Path | None = None) -> InstallReport:
+def skills_status(base: Path | None = None, user: bool = False) -> InstallReport:
     """Per-skill state: unchanged (as packaged), modified, or missing."""
-    root = base if base is not None else Path.cwd()
+    skills_root = _skills_root(base, user)
     results: list[SkillReport] = []
     for name, content in list_packaged_skills().items():
-        target = _installed_skill_path(name, base)
+        target = skills_root / name / "SKILL.md"
         if not target.is_file():
             action = SkillAction.MISSING
         elif _sha256(target.read_bytes()) == _sha256(content.encode("utf-8")):
             action = SkillAction.UNCHANGED
         else:
             action = SkillAction.MODIFIED
-        results.append(SkillReport(skill=name, action=action, path=str(target.relative_to(root))))
-    return InstallReport(skills_dir=str(root / CLAUDE_SKILLS_DIR), results=results)
+        results.append(SkillReport(skill=name, action=action, path=str(target)))
+    return InstallReport(skills_dir=str(skills_root), results=results)

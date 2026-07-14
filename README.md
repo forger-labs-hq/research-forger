@@ -8,6 +8,13 @@ hypotheses, benchmarks competing implementations against a frozen baseline
 in isolated local workspaces, and delivers the strongest supported result
 as a clean branch, an engineering report, or a research package.
 
+Inspired by Andrej Karpathy's
+[autoresearch](https://github.com/karpathy/autoresearch), where an agent
+autonomously runs training experiments against a fixed benchmark overnight —
+ResearchForge generalizes that loop to any repository with a measurable
+benchmark, and grounds it in literature: papers → hypotheses → controlled
+experiments → a validated, reproducible result.
+
 ## How it works
 
 Three parties with strict roles:
@@ -67,10 +74,52 @@ the same demo under Docker isolation.
   outline, reproducibility data).
   Details: [docs/experiment-mode.md](docs/experiment-mode.md)
 
-Prefer the terminal? Every step is a plain CLI command with `--json`
-output — the journeys above are documented command-by-command in those same
-docs, and [docs/claude-mode.md](docs/claude-mode.md) explains exactly what
-the Claude skills do and cannot do.
+## Use without Claude (plain CLI)
+
+Everything works from the terminal alone — the only difference is that the
+synthesis steps Claude would do (the landscape, hypotheses, and experiment
+patches) become files **you** write, against schemas the CLI exports and
+validates. `researchforge status` names the next command at every point.
+
+**Research a question:**
+
+```bash
+researchforge project create --mode explore_research_idea --objective "..."
+researchforge research search        # arXiv: fetch -> dedup -> rank -> store
+researchforge research context       # exports context.json with the schemas
+# you write .researchforge/synthesis/landscape.yaml + hypotheses.yaml
+researchforge research landscape --import .researchforge/synthesis/landscape.yaml
+researchforge hypotheses import .researchforge/synthesis/hypotheses.yaml
+researchforge report build           # citation-backed report
+```
+
+**Improve a repository:**
+
+```bash
+researchforge project create --mode improve_repository --objective "..."
+researchforge repo scan
+researchforge contract generate      # edit researchforge.yaml, then:
+researchforge contract approve       # typed approval -> frozen evaluation
+researchforge baseline run
+researchforge experiment plan hyp-001   # exports the plan schema + contract
+# you write .researchforge/experiments/plan.yaml + patches/*.patch
+researchforge experiment import .researchforge/experiments/plan.yaml
+researchforge experiment approve plan-001
+researchforge experiment run plan-001   # screening -> full funnel
+researchforge validate run-001          # repeated runs -> validated
+researchforge ship branch && researchforge report build
+```
+
+Full walkthroughs: [docs/research-mode.md](docs/research-mode.md) and
+[docs/experiment-mode.md](docs/experiment-mode.md).
+[docs/claude-mode.md](docs/claude-mode.md) explains exactly what the Claude
+skills do and cannot do.
+
+**Start over:** all state is local. `rm -rf .researchforge researchforge.yaml`
+resets a project completely (add `researchforge claude uninstall` first if
+you want the skills gone too); to redefine just the objective on existing
+data, use `researchforge project create --force-update`. Nothing outside
+your repository is ever created.
 
 ## Supported repositories (beta)
 
