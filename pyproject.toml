@@ -37,7 +37,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/researchforge/researchforge"
+Homepage = "https://github.com/forger-labs-hq/research-forger"
+Changelog = "https://github.com/forger-labs-hq/research-forger/blob/main/CHANGELOG.md"
+Issues = "https://github.com/forger-labs-hq/research-forger/issues"
 
 [project.scripts]
 researchforge = "researchforge.cli:app"

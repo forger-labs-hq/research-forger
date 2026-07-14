@@ -7,16 +7,16 @@ CLI. It studies relevant literature, maps promising methods to your idea or
 repository, creates testable hypotheses, and benchmarks competing
 implementations against a controlled baseline in local, isolated workspaces.
 
-**Status:** Phase 1E — the full local pipeline, drivable from Claude Code.
-Research intelligence (arXiv discovery, landscape, hypotheses), the
+**Status:** open-source beta (Phase 1 complete). The full local pipeline —
+research intelligence (arXiv discovery, landscape, hypotheses), the
 experiment contract + baseline, a controlled experiment funnel (screening →
 full → validation) over Claude-authored patch variants, shipping (clean
-branch, opt-in draft PR, engineering report, research package), and
-installable Claude Code skills for the whole workflow. See
+branch, opt-in draft PR, engineering report, research package) — drivable
+end-to-end from Claude Code. See
 [docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md](docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md)
 for the roadmap, [docs/architecture.md](docs/architecture.md) for code
-layout, and [docs/research-mode.md](docs/research-mode.md) for the research
-workflow.
+layout, and [docs/security.md](docs/security.md) for the security model and
+honest limitations.
 
 ## Install
 
@@ -88,6 +88,33 @@ benchmark where one variant genuinely improves F1, one violates the latency
 constraint, and one fails (and all three are preserved in the record).
 [examples/docker-python](examples/docker-python/README.md) is the same demo
 under Docker isolation.
+
+## Supported repositories (beta)
+
+The improve-repository journey currently expects:
+
+- a **git** repository with **user-owned or trusted code** (isolation is
+  local, not a hostile-code sandbox — [docs/security.md](docs/security.md));
+- a **Python 3.11+** single project or single target service;
+- an existing **Dockerfile** or simple Python dependency metadata
+  (`requirements.txt` / `pyproject.toml`);
+- a **machine-readable benchmark** (a command that writes JSON metrics)
+  with **bounded runtime**;
+- no production infrastructure required.
+
+The explore-research-idea journey works anywhere. Repositories outside this
+matrix are reported honestly by `researchforge repo scan` rather than
+half-supported.
+
+## Beta feedback
+
+This is a narrow-but-complete beta — reports shape what gets built next.
+Use the issue templates ([bug](.github/ISSUE_TEMPLATE/bug_report.yml),
+[setup failure](.github/ISSUE_TEMPLATE/setup_failure.yml),
+[beta feedback](.github/ISSUE_TEMPLATE/beta_feedback.yml)). Optionally,
+`researchforge analytics enable` records **local-only** coarse events —
+nothing is transmitted — and `researchforge analytics show` computes the
+beta metrics you can choose to include in a report.
 
 ## License
 

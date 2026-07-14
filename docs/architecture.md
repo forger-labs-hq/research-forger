@@ -1,12 +1,13 @@
-# Architecture — Phase 1 (0 through 1E)
+# Architecture — Phase 1 (complete)
 
-> This document describes the codebase after **Phase 1E** (Claude Code
-> experience). See
+> This document describes the codebase at the **Phase 1 open-source beta**.
+> See
 > [RESEARCHFORGE_PHASED_BUILD_SPEC.md](RESEARCHFORGE_PHASED_BUILD_SPEC.md)
 > for the full product spec, [research-mode.md](research-mode.md) for the
 > research workflow, [experiment-mode.md](experiment-mode.md) for the
-> contract → baseline → funnel → shipping workflow, and
-> [claude-mode.md](claude-mode.md) for driving everything from Claude Code.
+> contract → baseline → funnel → shipping workflow,
+> [claude-mode.md](claude-mode.md) for driving everything from Claude Code,
+> and [security.md](security.md) for the security model.
 
 ## Module layout
 
@@ -42,6 +43,7 @@ src/researchforge/
 ├── reporting/       # research + engineering reports, research package, `paper package`
 ├── claude/          # packaged Claude Code skills + manifest-based installer
 │   └── skills/      #   12 SKILL.md assets shipped inside the wheel
+├── analytics/       # opt-in local-only beta analytics (spec §20)
 ├── storage/         # sqlite persistence boundary (one repository module per entity)
 └── utils/           # system_checks (doctor), output (JsonOption/echo), artifact_io
 ```
