@@ -32,16 +32,29 @@ runs in a detached git worktree (your checkout is never touched), and
 
 ## Get started (two minutes)
 
+Everything runs on your machine — nothing is uploaded anywhere. "Working on
+a repository" just means having it on disk and starting Claude Code from
+inside it.
+
 ```bash
-# 1. Install (no package published yet — from source):
+# 1. Install ResearchForge (no package published yet — from source):
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. In the repository you want to work on:
+# 2. Go to the repository you want to work on (clone it first if needed)
+#    and initialize ResearchForge inside it:
+cd path/to/your-repo
 researchforge init --claude
+
+# 3. Start Claude Code IN that directory:
+claude
 ```
 
-Then open that repository in Claude Code and say what you want:
+(Using the desktop app instead? Open that repository folder as the
+session's project — a session started from the home screen without a
+folder can't see any project's skills.)
+
+Then say what you want:
 
 > `/researchforge-start` — *"Can uncertainty-aware routing outperform fixed
 > routing?"* — or — *"Improve this repo's F1 without hurting latency."*
@@ -50,6 +63,11 @@ Claude walks the whole journey from there: it runs the CLI, shows you what
 it found, and **asks before anything is approved, executed, or shipped**.
 If you ever wonder where things stand, `researchforge status` names the
 exact next step.
+
+> **Why don't I see `/researchforge-…` in a new session?** Project skills
+> load from the directory a session is opened in. Open the session in the
+> initialized repository — or run `researchforge claude install --user` once
+> to put the skills in `~/.claude/skills/`, where every session sees them.
 
 ## See it work first
 

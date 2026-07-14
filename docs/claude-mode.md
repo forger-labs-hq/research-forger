@@ -39,8 +39,12 @@ machine (manifest: `~/.claude/researchforge-claude-skills-manifest.json`).
 The skills are plain files — nothing about them is tied to a Claude
 account. If `/researchforge-…` doesn't appear:
 
-1. **Right directory?** Project-level skills only load when Claude Code is
-   opened in the repository that contains `.claude/skills/`. Verify with
+1. **Right directory?** Project-level skills only load when the session is
+   opened **in** the repository that contains `.claude/skills/` — starting
+   a new session from the app home screen (no project folder) or from
+   another directory won't show them, even though the install succeeded.
+   Open the session in the repo (terminal: `cd <repo> && claude`; desktop
+   app: open the folder as the session's project). Verify the files with
    `researchforge claude status` from that directory.
 2. **Switched Claude accounts?** Claude Code tracks workspace trust and
    settings per account — after switching, the project may need to be
