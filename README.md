@@ -80,6 +80,15 @@ researchforge paper package              # research bundle (BibTeX, outline, dat
 `--json`. See [docs/experiment-mode.md](docs/experiment-mode.md) for the
 isolation and safety guarantees.
 
+## Try the demo
+
+[docs/demo.md](docs/demo.md) runs the full journey against
+[examples/simple-python](examples/simple-python/README.md) — a deterministic
+benchmark where one variant genuinely improves F1, one violates the latency
+constraint, and one fails (and all three are preserved in the record).
+[examples/docker-python](examples/docker-python/README.md) is the same demo
+under Docker isolation.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
