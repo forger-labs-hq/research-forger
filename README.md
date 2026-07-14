@@ -2,92 +2,75 @@
 
 *From papers to proof.*
 
-ResearchForge is an open-source, Claude-first research and experimentation
-CLI. It studies relevant literature, maps promising methods to your idea or
-repository, creates testable hypotheses, and benchmarks competing
-implementations against a controlled baseline in local, isolated workspaces.
+ResearchForge turns a research question — or an "improve my repository"
+goal — into evidence. It finds relevant papers, helps Claude form testable
+hypotheses, benchmarks competing implementations against a frozen baseline
+in isolated local workspaces, and delivers the strongest supported result
+as a clean branch, an engineering report, or a research package.
 
-**Status:** open-source beta (Phase 1 complete). The full local pipeline —
-research intelligence (arXiv discovery, landscape, hypotheses), the
-experiment contract + baseline, a controlled experiment funnel (screening →
-full → validation) over Claude-authored patch variants, shipping (clean
-branch, opt-in draft PR, engineering report, research package) — drivable
-end-to-end from Claude Code. See
-[docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md](docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md)
-for the roadmap, [docs/architecture.md](docs/architecture.md) for code
-layout, and [docs/security.md](docs/security.md) for the security model and
-honest limitations.
+## How it works
 
-## Install
+Three parties with strict roles:
 
-No package is published yet. Install from source in editable mode:
+| Who | Does what |
+|---|---|
+| **You** | set the objective; approve the benchmark contract, each experiment plan, and anything that ships |
+| **Claude** (in Claude Code) | reads the papers, writes the research landscape, hypotheses, and experiment patches; explains results |
+| **The Python engine** | everything that must be trustworthy: search, validation, isolated execution, ranking, shipping — no prompt can bypass it |
+
+No model API key is required — Claude Code *is* the model. Every artifact
+Claude writes is schema-validated before it is stored, every experiment
+runs in a detached git worktree (your checkout is never touched), and
+"validated" is only ever earned by repeated benchmark runs.
+
+## Get started (two minutes)
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+# 1. Install (no package published yet — from source):
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+
+# 2. In the repository you want to work on:
+researchforge init --claude
 ```
 
-## Use from Claude Code (recommended)
+Then open that repository in Claude Code and say what you want:
 
-```bash
-researchforge init --claude     # initialize + install project skills
-```
+> `/researchforge-start` — *"Can uncertainty-aware routing outperform fixed
+> routing?"* — or — *"Improve this repo's F1 without hurting latency."*
 
-Then, in Claude Code, start with `/researchforge-start` — the skills walk
-both journeys below, calling the CLI with `--json` and asking you before
-every approval, run, and ship step. See
-[docs/claude-mode.md](docs/claude-mode.md) for details and the safety model
-(skills are UX; all enforcement is in the Python engine).
+Claude walks the whole journey from there: it runs the CLI, shows you what
+it found, and **asks before anything is approved, executed, or shipped**.
+If you ever wonder where things stand, `researchforge status` names the
+exact next step.
 
-## Quickstart — explore a research idea
+## See it work first
 
-```bash
-researchforge doctor
-researchforge project create --mode explore_research_idea \
-  --objective "Can uncertainty-aware routing outperform fixed routing?"
-researchforge research search          # arXiv: fetch → dedup → rank → store
-researchforge papers list
-researchforge research context         # export bundle for Claude synthesis
-# Claude writes landscape.yaml + hypotheses.yaml (see docs/research-mode.md)
-researchforge research landscape --import .researchforge/synthesis/landscape.yaml
-researchforge hypotheses import .researchforge/synthesis/hypotheses.yaml
-researchforge report build             # citation-backed Markdown report
-```
+[docs/demo.md](docs/demo.md) is a ten-minute, fully offline walkthrough
+against [examples/simple-python](examples/simple-python/README.md) — a
+deterministic benchmark where one variant genuinely improves F1, one is
+rejected for violating the latency budget, and one fails (all three stay in
+the record). [examples/docker-python](examples/docker-python/README.md) is
+the same demo under Docker isolation.
 
-## Quickstart — improve a repository
+## What you get
 
-```bash
-researchforge project create --mode improve_repository --objective "Improve F1 ..."
-researchforge repo scan
-researchforge contract generate     # edit researchforge.yaml, then:
-researchforge contract approve      # typed approval -> immutable contract
-researchforge baseline run          # frozen baseline in an isolated worktree
-researchforge experiment plan hyp-001
-# Claude writes plan.yaml + patches/ (see docs/experiment-mode.md)
-researchforge experiment import .researchforge/experiments/plan.yaml
-researchforge experiment approve plan-001
-researchforge experiment run plan-001    # screening -> full, one at a time
-researchforge results show run-001       # ranking, Pareto trade-offs, rejections
-researchforge validate run-001           # repeated runs -> validated
-researchforge ship branch                # clean local branch (never pushed)
-researchforge report build               # engineering report
-researchforge ship pr                    # opt-in: push + DRAFT PR via gh
-researchforge paper package              # research bundle (BibTeX, outline, data)
-```
+- **Explore a research idea** → an arXiv-backed research landscape, graded
+  evidence (published claim vs interpretation vs speculation), testable
+  hypotheses, and a citation-backed report.
+  Details: [docs/research-mode.md](docs/research-mode.md)
+- **Improve a repository** → all of the above, plus: an approved benchmark
+  contract, a frozen baseline, a screening → full → validation experiment
+  funnel over Claude-authored patches, Pareto-ranked results with rejected
+  approaches preserved, and shipping — a clean local branch, an opt-in
+  draft PR, the engineering report, and a research bundle (BibTeX, paper
+  outline, reproducibility data).
+  Details: [docs/experiment-mode.md](docs/experiment-mode.md)
 
-`researchforge status` always shows the next step. Every command supports
-`--json`. See [docs/experiment-mode.md](docs/experiment-mode.md) for the
-isolation and safety guarantees.
-
-## Try the demo
-
-[docs/demo.md](docs/demo.md) runs the full journey against
-[examples/simple-python](examples/simple-python/README.md) — a deterministic
-benchmark where one variant genuinely improves F1, one violates the latency
-constraint, and one fails (and all three are preserved in the record).
-[examples/docker-python](examples/docker-python/README.md) is the same demo
-under Docker isolation.
+Prefer the terminal? Every step is a plain CLI command with `--json`
+output — the journeys above are documented command-by-command in those same
+docs, and [docs/claude-mode.md](docs/claude-mode.md) explains exactly what
+the Claude skills do and cannot do.
 
 ## Supported repositories (beta)
 
@@ -115,6 +98,16 @@ Use the issue templates ([bug](.github/ISSUE_TEMPLATE/bug_report.yml),
 `researchforge analytics enable` records **local-only** coarse events —
 nothing is transmitted — and `researchforge analytics show` computes the
 beta metrics you can choose to include in a report.
+
+## More documentation
+
+- [docs/demo.md](docs/demo.md) — the launch demo, step by step
+- [docs/claude-mode.md](docs/claude-mode.md) — working from Claude Code
+- [docs/research-mode.md](docs/research-mode.md) — the research journey (CLI)
+- [docs/experiment-mode.md](docs/experiment-mode.md) — contract, funnel, shipping (CLI)
+- [docs/security.md](docs/security.md) — security model and honest limitations
+- [docs/architecture.md](docs/architecture.md) — code layout
+- [docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md](docs/RESEARCHFORGE_PHASED_BUILD_SPEC.md) — the product spec
 
 ## License
 
