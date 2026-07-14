@@ -1,0 +1,38 @@
+name: Setup failure
+description: A baseline or environment setup failed — these reports directly shape the beta.
+labels: [setup-failure]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Failure category
+      description: Matches the categories in `researchforge analytics show` and baseline statuses.
+      options:
+        - failed_setup (environment/deps could not be prepared)
+        - failed_execution (benchmark command crashed)
+        - failed_timeout (hit the contract time limit)
+        - failed_invalid_result (result file missing or malformed)
+        - contract validation (researchforge.yaml would not approve)
+        - doctor (missing git/docker/python requirement)
+        - other
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Execution mode
+      options: [docker, venv, unsure]
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Command + output
+      description: The failing command and what it printed. `researchforge analytics show --json` output is welcome if you opted in.
+    validations:
+      required: true
+  - type: textarea
+    id: repo-shape
+    attributes:
+      label: Repository shape
+      description: Language/framework, how the benchmark is invoked, Dockerfile or not. No source code needed.

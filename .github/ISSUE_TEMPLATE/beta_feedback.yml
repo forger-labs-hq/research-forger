@@ -1,0 +1,40 @@
+name: Beta feedback
+description: How did ResearchForge work for you? (The questions we are trying to answer this beta.)
+labels: [beta-feedback]
+body:
+  - type: textarea
+    id: journey
+    attributes:
+      label: What did you use it for, and how far did you get?
+      description: e.g. "explore mode through the report" or "improve mode, stuck at baseline".
+    validations:
+      required: true
+  - type: dropdown
+    id: hypotheses-quality
+    attributes:
+      label: Were the hypotheses meaningfully better than generic LLM suggestions?
+      options: [yes, somewhat, no, did not get that far]
+  - type: dropdown
+    id: evidence-clarity
+    attributes:
+      label: Was the distinction between paper evidence and your project's measured evidence clear?
+      options: [yes, mostly, no]
+  - type: dropdown
+    id: rejected-value
+    attributes:
+      label: Did you find the rejected/failed experiment history valuable?
+      options: [yes, no, did not get that far]
+  - type: dropdown
+    id: recommendation-shape
+    attributes:
+      label: Do you prefer one recommendation or a trade-off frontier?
+      options: [one recommendation, the frontier, depends]
+  - type: textarea
+    id: benchmark
+    attributes:
+      label: Could you provide a reliable benchmark? What was hard about it?
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Paper selection trust, Docker vs venv experience, what you'd pay for, what almost made you quit.

@@ -1,0 +1,29 @@
+name: Bug report
+description: Something behaved incorrectly.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ResearchForge version
+      description: "`pip show researchforge` or `researchforge --help` header"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the command you ran and its output (secrets are redacted in logs, but double-check before pasting).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`researchforge doctor --json` output"
+      render: json
