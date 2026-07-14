@@ -22,3 +22,6 @@ htmlcov/
 
 # ResearchForge local project state
 .researchforge/
+
+# Local Claude Code state (skills are installed per-project via `researchforge claude install`)
+.claude/
