@@ -50,6 +50,9 @@ def package_command(
 
         target = output or (researchforge_dir() / PACKAGE_DIR_NAME)
         result = build_research_package(conn, target)
+        from researchforge.analytics.service import record_event
+
+        record_event("package_generated")
         record_deliverable_once(
             conn,
             project.id,

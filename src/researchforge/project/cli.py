@@ -80,6 +80,9 @@ def create(
                 )
             return
 
+    from researchforge.analytics.service import record_event
+
+    record_event("project_created")
     _print_project(project, json_output)
     if not json_output:
         next_step = (

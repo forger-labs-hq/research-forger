@@ -89,6 +89,13 @@ def run(
                 typer.echo(str(exc))
             raise typer.Exit(code=1) from None
 
+    from researchforge.analytics.service import record_event
+
+    record_event(
+        "baseline_completed",
+        ok=result.status is BaselineStatus.SUCCEEDED,
+        category=None if result.status is BaselineStatus.SUCCEEDED else result.status.value,
+    )
     if json_output:
         echo_model(result)
     else:

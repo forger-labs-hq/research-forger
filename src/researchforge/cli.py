@@ -11,6 +11,8 @@ from uuid import uuid4
 
 import typer
 
+from researchforge.analytics.cli import analytics_app
+from researchforge.analytics.service import record_event
 from researchforge.claude.cli import claude_app
 from researchforge.config.paths import is_initialized, researchforge_dir
 from researchforge.contract.cli import contract_app
@@ -50,6 +52,7 @@ app.command("validate")(validate_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
 app.add_typer(claude_app, name="claude")
+app.add_typer(analytics_app, name="analytics")
 
 
 @app.command()
@@ -68,6 +71,7 @@ def doctor(json_output: JsonOption = False) -> None:
 
     if any(not result.ok and result.required for result in results):
         raise typer.Exit(code=1)
+    record_event("doctor_passed")
 
 
 @app.command()
@@ -94,6 +98,7 @@ def init(
         )
         with closing(open_project_db()) as conn:
             insert_project(conn, project)
+        record_event("initialized")
 
     skills: InstallReport | None = install_skills() if claude else None
 

@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from researchforge.analytics.service import record_event
 from researchforge.config.settings import load_settings
 from researchforge.domain.paper import Paper
 from researchforge.research.arxiv_client import ArxivClient, ArxivError
@@ -68,6 +69,7 @@ def search(
             typer.echo(f"arXiv retrieval failed: {exc}")
             raise typer.Exit(code=1) from None
 
+    record_event("papers_retrieved")
     if json_output:
         typer.echo(
             json.dumps(
@@ -155,6 +157,8 @@ def landscape(
 
         if import_file is not None:
             result = import_landscape(conn, import_file, project.id)
+            if result.ok:
+                record_event("landscape_imported")
             stored = get_landscape(conn) if result.ok else None
             success = (
                 f"Landscape imported: {len(stored.directions)} direction(s), "
