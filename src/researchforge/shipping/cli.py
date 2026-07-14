@@ -56,6 +56,9 @@ def branch_command(
             typer.echo(str(exc))
             raise typer.Exit(code=1) from None
 
+    from researchforge.analytics.service import record_event
+
+    record_event("branch_created")
     if json_output:
         echo_model(result)
         return
@@ -217,6 +220,9 @@ def pr_command(
             ),
         )
 
+    from researchforge.analytics.service import record_event
+
+    record_event("draft_pr_created")
     if json_output:
         typer.echo(json.dumps({"url": url, "branch": branch, "draft": True}, indent=2))
     else:

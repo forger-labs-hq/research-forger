@@ -78,6 +78,9 @@ def scan(
             project.model_copy(update={"repository": repository, "updated_at": datetime.now(UTC)}),
         )
 
+    from researchforge.analytics.service import record_event
+
+    record_event("repo_scanned", category=result.compatibility.value)
     if json_output:
         echo_model(result)
     else:

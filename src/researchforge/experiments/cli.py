@@ -162,9 +162,14 @@ def approve_command(
 
 
 def _emit_summary(summary: object, json_output: bool) -> None:
+    from researchforge.analytics.service import record_event
     from researchforge.execution.experiments import RunSummary
 
     assert isinstance(summary, RunSummary)
+    for status, count in summary.counts.items():
+        for _ in range(count):
+            record_event("experiment_started")
+            record_event("experiment_completed", ok=status == "promising", category=status)
     if json_output:
         typer.echo(
             json.dumps(
@@ -442,6 +447,14 @@ def validate_command(
             typer.echo(str(exc))
             raise typer.Exit(code=1) from None
 
+    from researchforge.analytics.service import record_event
+
+    for validated_summary in outcome.summaries:
+        record_event(
+            "validated_finding",
+            ok=validated_summary.outcome is ExperimentStatus.VALIDATED,
+            category=validated_summary.outcome.value,
+        )
     if json_output:
         typer.echo(json.dumps([s.model_dump(mode="json") for s in outcome.summaries], indent=2))
         return

@@ -156,6 +156,10 @@ def approve(
             typer.echo(str(exc))
             raise typer.Exit(code=1) from None
 
+    if created:
+        from researchforge.analytics.service import record_event
+
+        record_event("contract_approved")
     if json_output:
         payload = contract.model_dump(mode="json")
         payload["created"] = created

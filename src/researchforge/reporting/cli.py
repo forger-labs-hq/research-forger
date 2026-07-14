@@ -117,6 +117,10 @@ def build(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(markdown, encoding="utf-8")
 
+        from researchforge.analytics.service import record_event
+
+        record_event("report_generated", category="engineering" if engineering else "research")
+
         if engineering:
             record_deliverable_once(
                 conn,

@@ -59,6 +59,10 @@ def import_command(
             raise typer.Exit(code=1)
         result = import_hypotheses(conn, file, project.id, load_settings())
         count = len(list_hypotheses(conn)) if result.ok else 0
+    if result.ok:
+        from researchforge.analytics.service import record_event
+
+        record_event("hypotheses_imported")
     echo_import_result(
         result.errors,
         result.warnings,
