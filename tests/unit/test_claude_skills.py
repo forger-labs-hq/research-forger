@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -197,6 +198,25 @@ class TestInstaller:
         by_skill = {r.skill: r.action for r in forced.results}
         assert by_skill["researchforge-ship"] is SkillAction.REMOVED
         assert not target.exists()
+
+    def test_user_level_install_targets_home(
+        self, isolated_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_home = isolated_project_dir / "home"
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+
+        report = install_skills(user=True)
+
+        assert report.skills_dir == str(fake_home / ".claude" / "skills")
+        assert (fake_home / ".claude" / "skills" / "researchforge-start" / "SKILL.md").is_file()
+        assert (fake_home / ".claude" / "researchforge-claude-skills-manifest.json").is_file()
+        # Project tree untouched; project-level status still reports missing.
+        assert not (isolated_project_dir / ".claude").exists()
+        assert all(r.action is SkillAction.MISSING for r in skills_status().results)
+
+        removed = uninstall_skills(user=True)
+        assert all(r.action is SkillAction.REMOVED for r in removed.results)
+        assert not (fake_home / ".claude" / "skills" / "researchforge-start").exists()
 
     def test_status_reports_states(self, isolated_project_dir: Path) -> None:
         statuses = {r.skill: r.action for r in skills_status().results}

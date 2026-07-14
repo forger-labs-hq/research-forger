@@ -23,6 +23,12 @@ ForceOption = typer.Option(
     help="Overwrite/remove skills even if they were modified after installation.",
 )
 
+UserOption = typer.Option(
+    False,
+    "--user",
+    help="Target ~/.claude/skills/ (every project on this machine) instead of this repository.",
+)
+
 _ACTION_MARKERS = {
     SkillAction.INSTALLED: "+",
     SkillAction.UPDATED: "^",
@@ -44,9 +50,11 @@ def _echo_report(report: InstallReport, json_output: bool) -> None:
 
 
 @claude_app.command("install")
-def install_command(force: bool = ForceOption, json_output: JsonOption = False) -> None:
+def install_command(
+    force: bool = ForceOption, user: bool = UserOption, json_output: JsonOption = False
+) -> None:
     """Install the ResearchForge skills into this repository's .claude/skills/."""
-    report = install_skills(force=force)
+    report = install_skills(force=force, user=user)
     _echo_report(report, json_output)
     if not json_output:
         if report.conflicts:
@@ -58,9 +66,11 @@ def install_command(force: bool = ForceOption, json_output: JsonOption = False) 
 
 
 @claude_app.command("uninstall")
-def uninstall_command(force: bool = ForceOption, json_output: JsonOption = False) -> None:
+def uninstall_command(
+    force: bool = ForceOption, user: bool = UserOption, json_output: JsonOption = False
+) -> None:
     """Remove the installed ResearchForge skills (user-modified files are kept)."""
-    report = uninstall_skills(force=force)
+    report = uninstall_skills(force=force, user=user)
     _echo_report(report, json_output)
     if not json_output:
         left = [r for r in report.results if r.action is SkillAction.LEFT_MODIFIED]
@@ -71,7 +81,7 @@ def uninstall_command(force: bool = ForceOption, json_output: JsonOption = False
 
 
 @claude_app.command("status")
-def status_command(json_output: JsonOption = False) -> None:
+def status_command(user: bool = UserOption, json_output: JsonOption = False) -> None:
     """Show whether each packaged skill is installed, modified, or missing."""
-    report = skills_status()
+    report = skills_status(user=user)
     _echo_report(report, json_output)
