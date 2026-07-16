@@ -680,7 +680,8 @@ def _summarize_paths(
         counts[experiment.status.value] = counts.get(experiment.status.value, 0) + 1
     promising = [e.experiment_id for e in experiments if e.status is ExperimentStatus.PROMISING]
     next_action = (
-        f"researchforge validate {run.run_id}"
+        f"researchforge validate {run.run_id}  # inspect first: "
+        f"researchforge results show {run.run_id} or researchforge dashboard --open"
         if promising
         else "No promising experiments — plan a new batch with `researchforge experiment plan`."
     )

@@ -86,6 +86,7 @@ recorded.
 
 ```bash
 researchforge results show run-001    # ranking, the violation, the failure
+researchforge dashboard --open        # the same story as charts (static HTML)
 ```
 
 ## 7. Validate the winner

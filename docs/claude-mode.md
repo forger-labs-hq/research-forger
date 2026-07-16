@@ -66,7 +66,7 @@ account. If `/researchforge-…` doesn't appear:
 | `/researchforge-baseline` | contract draft/validate/approve + frozen baseline |
 | `/researchforge-plan` | experiment variants: patches → 6-layer import → approval |
 | `/researchforge-run` | screening → full funnel execution, resume |
-| `/researchforge-results` | grounded summaries: ranking, Pareto, rejections |
+| `/researchforge-results` | grounded summaries: ranking, Pareto, rejections, the HTML dashboard |
 | `/researchforge-validate` | repeated finalist runs → `validated` |
 | `/researchforge-ship` | local branch → engineering report → opt-in draft PR |
 | `/researchforge-paper` | research package (BibTeX, outline, data) |
