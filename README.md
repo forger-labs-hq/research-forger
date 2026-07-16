@@ -87,9 +87,10 @@ the same demo under Docker isolation.
 - **Improve a repository** → all of the above, plus: an approved benchmark
   contract, a frozen baseline, a screening → full → validation experiment
   funnel over Claude-authored patches, Pareto-ranked results with rejected
-  approaches preserved, and shipping — a clean local branch, an opt-in
-  draft PR, the engineering report, and a research bundle (BibTeX, paper
-  outline, reproducibility data).
+  approaches preserved, a local HTML **dashboard** charting every experiment
+  against the baseline (`researchforge dashboard --open`), and shipping — a
+  clean local branch, an opt-in draft PR, the engineering report, and a
+  research bundle (BibTeX, paper outline, reproducibility data).
   Details: [docs/experiment-mode.md](docs/experiment-mode.md)
 
 ## Use without Claude (plain CLI)

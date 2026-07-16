@@ -22,6 +22,7 @@ from researchforge.experiments.cli import experiment_app, results_app, validate_
 from researchforge.hypotheses.cli import hypotheses_app
 from researchforge.project.cli import project_app
 from researchforge.reporting.cli import report_app
+from researchforge.reporting.dashboard_cli import dashboard_command
 from researchforge.reporting.paper_cli import paper_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
@@ -49,6 +50,7 @@ app.add_typer(baseline_app, name="baseline")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
+app.command("dashboard")(dashboard_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
 app.add_typer(claude_app, name="claude")
@@ -178,7 +180,7 @@ def _experiment_next_action() -> str:
             return "researchforge ship pr  # optional draft PR — or: researchforge paper package"
         return (
             "Phase 1 complete — `researchforge paper package` builds the research "
-            "bundle; Claude skills arrive in Phase 1E."
+            "bundle; `researchforge dashboard --open` visualizes the results."
         )
     return f"researchforge experiment run {latest.plan_id}  # or plan a new batch"
 

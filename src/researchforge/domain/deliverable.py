@@ -13,6 +13,7 @@ class DeliverableKind(StrEnum):
     DRAFT_PR = "draft_pr"
     ENGINEERING_REPORT = "engineering_report"
     RESEARCH_PACKAGE = "research_package"
+    DASHBOARD = "dashboard"
 
 
 class Deliverable(BaseModel):
