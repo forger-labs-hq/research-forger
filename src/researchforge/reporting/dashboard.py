@@ -15,7 +15,7 @@ from html import escape
 from researchforge import __version__
 from researchforge.config.settings import load_settings
 from researchforge.domain.baseline import BaselineRun
-from researchforge.domain.contract import ContractSpec, ExperimentContract
+from researchforge.domain.contract import ContractSpec, ExperimentContract, MetricDirection
 from researchforge.domain.experiment import (
     BenchmarkStage,
     Experiment,
@@ -23,14 +23,21 @@ from researchforge.domain.experiment import (
     ExperimentRunGroup,
     ExperimentStatus,
 )
-from researchforge.execution.ranking import ONE_OFF_CAVEAT, RankingReport, build_ranking_report
+from researchforge.execution.ranking import (
+    ONE_OFF_CAVEAT,
+    RankingReport,
+    build_ranking_report,
+    signed_improvement,
+)
 from researchforge.execution.validation import summarize_validation
 from researchforge.reporting.svg_charts import (
     Bar,
     Point,
+    ProgressPoint,
     SpreadRow,
     bar_chart,
     funnel_chart,
+    progress_chart,
     scatter_chart,
     spread_chart,
     status_color,
@@ -133,6 +140,60 @@ def _bars(
     return bars
 
 
+_SURVIVOR_STATUSES = (
+    ExperimentStatus.PROMISING,
+    ExperimentStatus.VALIDATING,
+    ExperimentStatus.VALIDATED,
+    ExperimentStatus.IMPLEMENTATION_READY,
+)
+
+
+def progress_points(
+    experiments: list[Experiment],
+    executions: list[ExperimentExecution],
+    baseline_value: float,
+    direction: MetricDirection,
+) -> list[ProgressPoint]:
+    """Chronological full-benchmark measurements with running-best bookkeeping.
+
+    A point is *kept* when it beat the running best AND the experiment
+    survived (a constraint violator with a better primary metric stays
+    discarded — the running best never advances through it).
+    """
+    titles = {e.experiment_id: e.title for e in experiments}
+    statuses = {e.experiment_id: e.status for e in experiments}
+    first_full: dict[str, ExperimentExecution] = {}
+    for execution in sorted(executions, key=lambda e: e.started_at):
+        if (
+            execution.benchmark_stage is BenchmarkStage.FULL
+            and execution.metrics is not None
+            and execution.experiment_id not in first_full
+        ):
+            first_full[execution.experiment_id] = execution
+
+    points: list[ProgressPoint] = []
+    best = baseline_value
+    for index, execution in enumerate(
+        sorted(first_full.values(), key=lambda e: e.started_at), start=1
+    ):
+        assert execution.metrics is not None
+        value = execution.metrics.primary_metric.value
+        survived = statuses.get(execution.experiment_id) in _SURVIVOR_STATUSES
+        kept = survived and signed_improvement(best, value, direction) > 0
+        if kept:
+            best = value
+        points.append(
+            ProgressPoint(
+                index=index,
+                value=value,
+                kept=kept,
+                label=titles.get(execution.experiment_id, execution.experiment_id),
+                experiment_id=execution.experiment_id,
+            )
+        )
+    return points
+
+
 def _funnel(
     experiments: list[Experiment], executions: list[ExperimentExecution]
 ) -> tuple[list[tuple[str, int]], list[str]]:
@@ -206,6 +267,28 @@ def build_dashboard(conn: sqlite3.Connection, run: ExperimentRunGroup | None) ->
         )
 
     sections = [_header_section(project.name, spec, contract, baseline, run)]
+
+    all_points = progress_points(
+        list_experiments(conn),
+        list_executions(conn),
+        baseline.metrics.primary_metric.value,
+        spec.objective.primary_metric.direction,
+    )
+    if all_points:
+        kept = sum(1 for p in all_points if p.kept)
+        chart = progress_chart(
+            all_points,
+            baseline.metrics.primary_metric.value,
+            primary,
+            lower_is_better=spec.objective.primary_metric.direction is MetricDirection.MINIMIZE,
+        )
+        sections.append(
+            f"<h2>Progress — {len(all_points)} experiment(s), {kept} kept improvement(s)</h2>"
+            f"{chart}<p class='sub'>Every full-benchmark measurement across all runs, in "
+            "order. Green: improved the running best and survived; gray: discarded (worse, "
+            "rejected on a constraint, or failed later).</p>"
+        )
+
     if run is None:
         sections.append(
             "<p class='empty'>No experiment runs recorded yet — run "

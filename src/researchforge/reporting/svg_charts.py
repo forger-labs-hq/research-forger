@@ -122,6 +122,104 @@ def bar_chart(bars: list[Bar], baseline_value: float, metric_name: str) -> str:
 
 
 @dataclass
+class ProgressPoint:
+    index: int  # chronological experiment number (0 = baseline)
+    value: float
+    kept: bool  # improved the running best (and survived)
+    label: str  # annotation shown for kept points
+    experiment_id: str = ""
+
+
+def progress_chart(
+    points: list[ProgressPoint], baseline_value: float, metric_name: str, lower_is_better: bool
+) -> str:
+    """Autoresearch-style progress: every experiment as a dot in chronological
+    order, kept improvements annotated, and a step line tracking the running
+    best. Inspired by karpathy/autoresearch's progress plot."""
+    width, height, pad_left, pad_bottom, pad_top = 760, 340, 60, 44, 40
+    plot_w, plot_h = width - pad_left - 24, height - pad_top - pad_bottom
+    values = [p.value for p in points] + [baseline_value]
+    lo, hi = _value_span(values)
+    max_index = max((p.index for p in points), default=1)
+
+    def sx(index: float) -> float:
+        # +0.6 keeps the newest point (and its label) off the right edge.
+        return pad_left + plot_w * index / (max(max_index, 1) + 0.6)
+
+    def sy(value: float) -> float:
+        return pad_top + plot_h * (1 - (value - lo) / (hi - lo))
+
+    direction = "lower is better" if lower_is_better else "higher is better"
+    kept_count = sum(1 for p in points if p.kept)
+    parts = [
+        f"<svg viewBox='0 0 {width} {height}' role='img' xmlns='http://www.w3.org/2000/svg'>",
+        f"<text x='{pad_left}' y='16' {FONT} font-size='12' fill='var(--fg-muted)'>"
+        f"{escape(metric_name)} ({escape(direction)}) — {len(points)} experiment(s), "
+        f"{kept_count} kept improvement(s)</text>",
+        f"<text x='{pad_left + plot_w / 2:.1f}' y='{height - 6}' {FONT} font-size='11' "
+        "text-anchor='middle' fill='var(--fg-muted)'>experiment # (chronological, all runs)"
+        "</text>",
+    ]
+    for i in range(5):
+        gval = lo + (hi - lo) * i / 4
+        gy = sy(gval)
+        parts.append(
+            f"<line x1='{pad_left}' y1='{gy:.1f}' x2='{width - 24}' y2='{gy:.1f}' "
+            "stroke='var(--grid)' stroke-width='1'/>"
+        )
+        parts.append(
+            f"<text x='{pad_left - 6}' y='{gy + 4:.1f}' {FONT} font-size='10' text-anchor='end' "
+            f"fill='var(--fg-muted)'>{_fmt(gval)}</text>"
+        )
+    # Running-best step line through baseline + kept points.
+    steps = [(0, baseline_value)] + [(p.index, p.value) for p in points if p.kept]
+    path = f"M {sx(steps[0][0]):.1f} {sy(steps[0][1]):.1f}"
+    for (_, prev_value), (next_index, next_value) in zip(steps, steps[1:], strict=False):
+        path += f" L {sx(next_index):.1f} {sy(prev_value):.1f}"
+        path += f" L {sx(next_index):.1f} {sy(next_value):.1f}"
+    path += f" L {sx(max_index):.1f} {sy(steps[-1][1]):.1f}"
+    parts.append(
+        f"<path d='{path}' fill='none' stroke='var(--chart-good)' stroke-width='2' "
+        "data-role='running-best'/>"
+    )
+    # Baseline point + label.
+    bx, by = sx(0), sy(baseline_value)
+    parts.append(
+        f"<circle cx='{bx:.1f}' cy='{by:.1f}' r='6' fill='{BASELINE_COLOR}' "
+        "data-progress='baseline'/>"
+    )
+    parts.append(
+        f"<text x='{bx + 8:.1f}' y='{by - 8:.1f}' {FONT} font-size='10' "
+        f"fill='{BASELINE_COLOR}' transform='rotate(-30 {bx + 8:.1f} {by - 8:.1f})'>"
+        "baseline</text>"
+    )
+    for point in points:
+        px, py = sx(point.index), sy(point.value)
+        if point.kept:
+            parts.append(
+                f"<circle cx='{px:.1f}' cy='{py:.1f}' r='6' fill='var(--chart-good)' "
+                f"stroke='var(--bg)' stroke-width='1' data-progress='kept' "
+                f"data-value='{_fmt(point.value)}'/>"
+            )
+            # Flip labels near the right edge so they never clip.
+            flip = px > pad_left + plot_w * 0.75
+            lx = px - 8 if flip else px + 8
+            anchor = " text-anchor='end'" if flip else ""
+            parts.append(
+                f"<text x='{lx:.1f}' y='{py - 8:.1f}' {FONT} font-size='10'{anchor} "
+                f"fill='var(--chart-good)' transform='rotate(-30 {lx:.1f} {py - 8:.1f})'>"
+                f"{escape(point.label)}</text>"
+            )
+        else:
+            parts.append(
+                f"<circle cx='{px:.1f}' cy='{py:.1f}' r='3.5' fill='var(--chart-muted)' "
+                f"opacity='0.55' data-progress='discarded' data-value='{_fmt(point.value)}'/>"
+            )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+@dataclass
 class Point:
     label: str
     x: float

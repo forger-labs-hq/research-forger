@@ -12,9 +12,11 @@ from researchforge.cli import app
 from researchforge.reporting.svg_charts import (
     Bar,
     Point,
+    ProgressPoint,
     SpreadRow,
     bar_chart,
     funnel_chart,
+    progress_chart,
     scatter_chart,
     spread_chart,
 )
@@ -97,6 +99,114 @@ class TestSvgCharts:
         assert any(e.get("data-role") == "full-run-value" for e in root.iter())
 
 
+class TestProgressChart:
+    def test_kept_discarded_and_running_best(self) -> None:
+        svg = progress_chart(
+            [
+                ProgressPoint(index=1, value=0.85, kept=True, label="Variant normalize"),
+                ProgressPoint(index=2, value=0.82, kept=False, label="Variant ngram"),
+                ProgressPoint(index=3, value=0.88, kept=True, label="Variant stemming"),
+            ],
+            baseline_value=0.8,
+            metric_name="f1",
+            lower_is_better=False,
+        )
+        root = _parse(svg)
+        kept = [e for e in root.iter() if e.get("data-progress") == "kept"]
+        discarded = [e for e in root.iter() if e.get("data-progress") == "discarded"]
+        assert len(kept) == 2 and len(discarded) == 1
+        assert any(e.get("data-progress") == "baseline" for e in root.iter())
+        assert any(e.get("data-role") == "running-best" for e in root.iter())
+        assert "Variant normalize" in svg and "Variant stemming" in svg
+        assert "Variant ngram" not in svg  # discarded points are not annotated
+        assert "2 kept improvement(s)" in svg
+        assert "higher is better" in svg
+
+    def test_progress_points_direction_and_survival(self) -> None:
+        """Running best only advances through surviving improvements."""
+        from datetime import UTC, datetime, timedelta
+
+        from researchforge.domain.contract import MetricDirection
+        from researchforge.domain.experiment import (
+            BenchmarkStage,
+            ExecutionRecordStatus,
+            Experiment,
+            ExperimentExecution,
+            ExperimentStatus,
+        )
+        from researchforge.execution.metrics import MetricResult, MetricValue
+        from researchforge.reporting.dashboard import progress_points
+
+        now = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+
+        def experiment(eid: str, title: str, status: ExperimentStatus) -> Experiment:
+            return Experiment(
+                experiment_id=eid,
+                plan_id="plan-001",
+                hypothesis_id="hyp-001",
+                title=title,
+                change_summary="s",
+                patch_text="p",
+                patch_sha256="0" * 64,
+                status=status,
+                created_at=now,
+                updated_at=now,
+            )
+
+        start = now
+
+        from researchforge.domain.baseline import EnvironmentFingerprint
+        from researchforge.domain.experiment import ExecutionArtifacts
+
+        def execution(eid: str, value: float, minutes: int) -> ExperimentExecution:
+            return ExperimentExecution(
+                execution_id=f"x-{eid}",
+                experiment_id=eid,
+                run_id="run-001",
+                hypothesis_id="hyp-001",
+                baseline_commit="c" * 40,
+                execution_mode="venv",
+                benchmark_stage=BenchmarkStage.FULL,
+                attempt=1,
+                change_summary="s",
+                started_at=start + timedelta(minutes=minutes),
+                status=ExecutionRecordStatus.SUCCEEDED,
+                metrics=MetricResult(
+                    schema_version=1,
+                    primary_metric=MetricValue(name="latency", value=value),
+                ),
+                artifacts=ExecutionArtifacts(diff_path="d", stdout_path="o", stderr_path="e"),
+                fingerprint=EnvironmentFingerprint(
+                    platform="test",
+                    execution_mode="venv",
+                    contract_id="contract-001",
+                    contract_version=1,
+                    commit_sha="c" * 40,
+                ),
+            )
+
+        experiments = [
+            experiment("exp-001", "worse", ExperimentStatus.PROMISING),
+            experiment("exp-002", "better but rejected", ExperimentStatus.REJECTED),
+            experiment("exp-003", "better and kept", ExperimentStatus.VALIDATED),
+        ]
+        executions = [
+            execution("exp-001", 120.0, 0),  # worse (higher latency)
+            execution("exp-002", 80.0, 1),  # improves, but rejected -> discarded
+            execution("exp-003", 90.0, 2),  # improves the (unchanged) best -> kept
+        ]
+
+        points = progress_points(
+            experiments, executions, baseline_value=100.0, direction=MetricDirection.MINIMIZE
+        )
+
+        assert [(p.experiment_id, p.kept) for p in points] == [
+            ("exp-001", False),
+            ("exp-002", False),
+            ("exp-003", True),
+        ]
+
+
 class TestDashboardCommand:
     def test_dashboard_on_validated_project(
         self, cli_runner: CliRunner, validated_project: Path, isolated_project_dir: Path
@@ -114,6 +224,7 @@ class TestDashboardCommand:
         assert "p95_latency_ms" in html  # constraint scatter present
         assert "validated" in html
         assert "Funnel" in html and "Validation spread" in html
+        assert "Progress —" in html and "kept improvement" in html
 
         # Self-contained: no external references, no scripts.
         assert "<script" not in html
