@@ -87,13 +87,36 @@ the same demo under Docker isolation.
 - **Improve a repository** → all of the above, plus: an approved benchmark
   contract, a frozen baseline, a screening → full → validation experiment
   funnel over Claude-authored patches, Pareto-ranked results with rejected
-  approaches preserved, a local HTML **dashboard** charting every experiment
-  against the baseline (`researchforge dashboard --open`), a **live
-  monitor** that follows runs as they happen (`researchforge serve --open`,
-  via `pip install "researchforge[serve]"`), and shipping — a clean local
-  branch, an opt-in draft PR, the engineering report, and a research bundle
-  (BibTeX, paper outline, reproducibility data).
+  approaches preserved, and shipping — a clean local branch, an opt-in
+  draft PR, the engineering report, and a research bundle (BibTeX, paper
+  outline, reproducibility data).
   Details: [docs/experiment-mode.md](docs/experiment-mode.md)
+
+## Watch your experiments (dashboard + live monitor)
+
+Two ways to *see* how experiments perform against the baseline:
+
+```bash
+researchforge dashboard --open       # one self-contained HTML snapshot
+```
+
+A single static file (no server, no JS libraries, nothing leaves your
+machine) with an autoresearch-style **progress chart** — every experiment as
+a chronological dot, kept improvements annotated, a running-best step
+line — plus per-experiment bars vs the baseline, the trade-off scatter with
+the hard-constraint line, the funnel with drop-offs, and validation spread.
+
+```bash
+pip install "researchforge[serve]"
+researchforge serve --open           # live monitor at http://127.0.0.1:8500
+```
+
+A local web monitor that follows runs **as they happen**: overview with the
+next action, research state (papers, landscape directions, hypotheses), a
+per-run experiments table that refreshes every 3 seconds while a run is in
+progress, the live chart dashboard, and a JSON API (`/api/state`). The
+server opens the database **read-only** and binds 127.0.0.1 only by
+default — watching can never interfere with a run.
 
 ## Use without Claude (plain CLI)
 
