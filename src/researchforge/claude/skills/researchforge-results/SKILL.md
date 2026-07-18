@@ -29,7 +29,9 @@ HTML dashboard (charts of every experiment vs the baseline, the trade-off
 scatter with the constraint line, the funnel, and validation spread) to
 `.researchforge/reports/dashboard.html` — offer `researchforge dashboard
 --open` when the user wants to *see* the results; it is built from the same
-recorded data and nothing else.
+recorded data and nothing else. For a *live* view while runs are in
+progress, `researchforge serve --open` starts a local read-only monitor
+(requires `pip install "researchforge[serve]"`).
 
 If a candidate looks like a winner, the next step is the
 researchforge-validate skill — repeated runs are what earn the word

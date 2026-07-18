@@ -26,6 +26,7 @@ from researchforge.reporting.dashboard_cli import dashboard_command
 from researchforge.reporting.paper_cli import paper_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
+from researchforge.server.cli import serve_command
 from researchforge.shipping.cli import ship_app
 from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
@@ -51,6 +52,7 @@ app.add_typer(experiment_app, name="experiment")
 app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
 app.command("dashboard")(dashboard_command)
+app.command("serve")(serve_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
 app.add_typer(claude_app, name="claude")
@@ -148,14 +150,23 @@ def _count(conn: sqlite3.Connection, table: str) -> int:
     return int(row["n"])
 
 
-def _experiment_next_action() -> str:
-    """Next step once a baseline exists (Phase 1C planning surface)."""
+def _experiment_next_action(conn: sqlite3.Connection | None = None) -> str:
+    """Next step once a baseline exists (Phase 1C planning surface).
+
+    Uses `conn` when given (lets read-only callers like the monitoring
+    server reuse this logic); otherwise opens the project db itself.
+    """
+    if conn is None:
+        with closing(open_project_db()) as owned:
+            return _experiment_next_action(owned)
+
+    from researchforge.domain.deliverable import DeliverableKind
     from researchforge.domain.experiment import ExperimentStatus, PlanStatus
+    from researchforge.storage.deliverable_repository import list_deliverables
     from researchforge.storage.experiment_repository import list_experiments, list_plans
 
-    with closing(open_project_db()) as conn:
-        plans = list_plans(conn)
-        experiments = list_experiments(conn)
+    plans = list_plans(conn)
+    experiments = list_experiments(conn)
     if not plans:
         return "researchforge experiment plan <hyp-id>  # plan experiment variants"
     latest = plans[-1]
@@ -163,17 +174,12 @@ def _experiment_next_action() -> str:
         return f"researchforge experiment approve {latest.plan_id}"
     if latest.status is PlanStatus.APPROVED:
         return f"researchforge experiment run {latest.plan_id}"
-    from researchforge.domain.deliverable import DeliverableKind
-    from researchforge.storage.deliverable_repository import list_deliverables
-
-    with closing(open_project_db()) as conn:
-        branch_deliverables = list_deliverables(conn, kind=DeliverableKind.BRANCH)
+    branch_deliverables = list_deliverables(conn, kind=DeliverableKind.BRANCH)
     if any(e.status is ExperimentStatus.VALIDATED for e in experiments):
         return "researchforge ship branch  # reconstruct the validated winner as a clean branch"
     if any(e.status is ExperimentStatus.IMPLEMENTATION_READY for e in experiments):
-        with closing(open_project_db()) as conn:
-            reports = list_deliverables(conn, kind=DeliverableKind.ENGINEERING_REPORT)
-            prs = list_deliverables(conn, kind=DeliverableKind.DRAFT_PR)
+        reports = list_deliverables(conn, kind=DeliverableKind.ENGINEERING_REPORT)
+        prs = list_deliverables(conn, kind=DeliverableKind.DRAFT_PR)
         if not reports:
             return "researchforge report build  # engineering report for the shipped change"
         if branch_deliverables and not prs:
@@ -194,6 +200,7 @@ def _next_action(
     contract_version: int | None,
     contract_drifted: bool,
     baseline_failed: bool = False,
+    conn: sqlite3.Connection | None = None,
 ) -> str:
     if project.mode is None or project.objective is None:
         return "researchforge project create"
@@ -209,7 +216,7 @@ def _next_action(
                     "re-run `researchforge baseline run`"
                 )
             return "researchforge baseline run"
-        return _experiment_next_action()
+        return _experiment_next_action(conn)
     if papers == 0:
         return "researchforge research search"
     if landscape == 0 or hypotheses == 0:

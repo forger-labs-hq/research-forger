@@ -72,6 +72,10 @@ without the contract flag plus a typed confirmation. Details in
 - Analytics are opt-in and local-only (`researchforge analytics`);
   nothing is ever transmitted. See the collection notice printed by
   `researchforge analytics enable`.
+- The monitoring server (`researchforge serve`) opens the database with
+  sqlite's read-only mode and exposes no mutating routes; it binds
+  127.0.0.1 by default and warns loudly if you bind anything else, because
+  anyone who can reach it can read your research notes and results.
 
 Report security issues via GitHub issues (or privately to the maintainer
 for anything sensitive).

@@ -43,7 +43,7 @@ from researchforge.reporting.svg_charts import (
     status_color,
 )
 
-_CSS = """
+DASHBOARD_CSS = """
 :root {
   --bg: #ffffff; --card: #f6f8fa; --fg: #1f2328; --fg-muted: #59636e;
   --grid: #d1d9e0; --chart-good: #1a7f37; --chart-info: #0969da;
@@ -325,7 +325,7 @@ def build_dashboard(conn: sqlite3.Connection, run: ExperimentRunGroup | None) ->
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>ResearchForge dashboard — {escape(project.name)}</title>"
-        f"<style>{_CSS}</style></head><body>{body}</body></html>"
+        f"<style>{DASHBOARD_CSS}</style></head><body>{body}</body></html>"
     )
 
 

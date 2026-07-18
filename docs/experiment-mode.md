@@ -36,6 +36,13 @@ researchforge paper package                # research bundle (BibTeX, outline, d
 `researchforge status` shows the next step at every stage. All commands
 support `--json`.
 
+**Monitor live:** `researchforge serve --open` (after
+`pip install "researchforge[serve]"`) starts a local, **read-only** web
+monitor — overview, research state, an experiments page that refreshes as
+each funnel stage completes, and the live dashboard charts. It binds
+127.0.0.1 only by default and opens the database in read-only mode, so
+watching can never interfere with a run.
+
 ## The contract is the boundary
 
 `researchforge.yaml` freezes the evaluation: primary metric + direction,

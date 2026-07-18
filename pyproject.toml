@@ -28,12 +28,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+serve = [
+  "fastapi>=0.111",
+  "uvicorn>=0.30",
+]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
   "ruff>=0.4",
   "mypy>=1.9",
   "types-PyYAML",
+  "fastapi>=0.111",
+  "uvicorn>=0.30",
 ]
 
 [project.urls]
