@@ -23,8 +23,11 @@ What the engine does (so you can narrate it honestly):
   benchmark;
 - failures and constraint violations are recorded, not retried silently.
 
-This can take a while (the plan's approval showed worst-case wall time). If
-the process is interrupted or times out:
+This can take a while (the plan's approval showed worst-case wall time).
+Offer the user a live view while it runs: `researchforge serve --open`
+starts a local read-only monitor whose Experiments page refreshes as each
+stage completes (needs `pip install "researchforge[serve]"`). If the
+process is interrupted or times out:
 
 ```bash
 researchforge experiment resume <run-id> --json
