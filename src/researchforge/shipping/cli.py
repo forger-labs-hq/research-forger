@@ -141,7 +141,29 @@ def pr_command(
             typer.echo("No 'origin' remote configured — add one before opening a PR.")
             raise typer.Exit(code=1)
 
-        if not yes:
+        fork_mode = not gh.viewer_can_push(repo_root)
+        if fork_mode:
+            upstream = gh.repo_nwo(repo_root)
+            ahead = gh.commits_ahead_of_default(repo_root, branch)
+            if ahead is not None and ahead > 1:
+                typer.echo(
+                    f"WARNING: {branch!r} carries {ahead} commits that are not on the "
+                    f"default branch of {upstream} — e.g. a locally committed benchmark. "
+                    "The PR will include ALL of them; review `git log` before proceeding."
+                )
+            if not yes:
+                typer.echo(
+                    f"You do not have push access to {upstream} (an open-source repo?). "
+                    "Proceeding will: (1) create or reuse a PUBLIC fork under your GitHub "
+                    f"account, (2) push exactly one branch ({branch!r}, commit "
+                    f"{(deliverable.commit_sha or '')[:12]}) to that fork, and (3) open a "
+                    f"DRAFT pull request on {upstream} for human review."
+                )
+                confirmation = typer.prompt("Type 'fork' to proceed")
+                if confirmation.strip().lower() != "fork":
+                    typer.echo("Not forked, nothing pushed.")
+                    raise typer.Exit(code=1)
+        elif not yes:
             typer.echo(
                 f"About to push branch {branch!r} (commit "
                 f"{(deliverable.commit_sha or '')[:12]}) to 'origin' and open a DRAFT "
@@ -198,10 +220,23 @@ def pr_command(
         body_file.write_text(body, encoding="utf-8")
 
         try:
-            gh.push_branch(repo_root, branch)
-            url = gh.create_draft_pr(
-                repo_root, branch=branch, title=title, body_file=body_file, base=base
-            )
+            if fork_mode:
+                gh.fork_and_add_remote(repo_root)
+                gh.push_branch(repo_root, branch, remote="fork")
+                url = gh.create_draft_pr(
+                    repo_root,
+                    branch=branch,
+                    title=title,
+                    body_file=body_file,
+                    base=base,
+                    repo=upstream,
+                    head_owner=gh.viewer_login(repo_root),
+                )
+            else:
+                gh.push_branch(repo_root, branch)
+                url = gh.create_draft_pr(
+                    repo_root, branch=branch, title=title, body_file=body_file, base=base
+                )
         except GhError as exc:
             typer.echo(str(exc))
             raise typer.Exit(code=1) from None

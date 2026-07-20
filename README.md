@@ -179,6 +179,19 @@ contract, the **`gh` CLI authenticated** to your remote, and a typed
 gates. Prefer full control? Stop after `ship branch` and push/PR yourself
 with plain git. Details: [docs/experiment-mode.md](docs/experiment-mode.md)
 
+**Open-source repositories (no push access):** cloned someone else's repo?
+`ship pr` detects that you can't push to origin and switches to the fork
+workflow — behind a typed `fork` confirmation that spells out exactly what
+happens: a **public fork** is created (or reused) under your GitHub
+account, one branch is pushed *to the fork*, and a **draft** PR is opened
+on the upstream repository. One caveat to review first: if you committed a
+benchmark locally to establish the baseline, that commit is part of your
+branch's history and **will appear in the PR** — check `git log` (the CLI
+warns you when the branch carries extra commits). And read the project's
+CONTRIBUTING.md before opening PRs on repos you don't maintain — a draft
+PR with a reproducible, validated improvement is a good contribution; ten
+of them are spam.
+
 ### Managing experiment runs
 
 | I want to… | Command |
