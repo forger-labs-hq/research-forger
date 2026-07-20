@@ -25,6 +25,7 @@ class ResearchSettings(BaseModel):
     screening_reject_margin_pct: float = Field(default=10.0, ge=0.0)
     tradeoff_material_pct: float = Field(default=5.0, ge=0.0)
     analytics_enabled: bool = False  # opt-in, local-only (spec §20)
+    research_output_dir: str = ".researchforge/research-output"  # `paper package` target
 
 
 def load_settings(base: Path | None = None) -> ResearchSettings:

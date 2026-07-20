@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from researchforge.server.data import ProjectState, open_readonly, read_state
 from researchforge.server.pages import (
+    experiment_page,
     experiments_page,
     guidance_card,
     overview_page,
@@ -59,6 +60,13 @@ def create_app(base: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Unknown session: {search_run_id}")
         return session_page(state, search_run_id)
 
+    @app.get("/experiments/{experiment_id}", response_class=HTMLResponse)
+    def experiment_detail(experiment_id: str) -> str:
+        state = state_or_404()
+        if not any(e.experiment_id == experiment_id for e in state.experiments):
+            raise HTTPException(status_code=404, detail=f"Unknown experiment: {experiment_id}")
+        return experiment_page(state, experiment_id)
+
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(run: str | None = None) -> str:
         from researchforge.reporting.dashboard import build_dashboard
@@ -84,7 +92,7 @@ def create_app(base: Path | None = None) -> FastAPI:
                     raise HTTPException(status_code=404, detail=f"Unknown run: {run}")
             else:
                 selected = runs[-1] if runs else None
-            html = build_dashboard(conn, selected)
+            html = build_dashboard(conn, selected, link_base="/experiments")
         # Inject the nav + auto-refresh into the standalone dashboard page.
         from researchforge.server.pages import _NAV
 

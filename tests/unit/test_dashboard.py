@@ -277,3 +277,52 @@ class TestDashboardCommand:
         with closing(open_project_db()) as conn:
             dashboards = list_deliverables(conn, kind=DeliverableKind.DASHBOARD)
         assert len(dashboards) == 1
+
+
+class TestDashboardV2:
+    def test_tree_chart_nodes_and_edges(self) -> None:
+        from researchforge.reporting.svg_charts import TreeNode, tree_chart
+
+        svg = tree_chart(
+            [
+                TreeNode("exp-001", "Root", "promising", 0.85, 6.2, None),
+                TreeNode("exp-002", "Loser", "rejected", 0.82, 2.9, None),
+                TreeNode("exp-003", "Child", "validated", 0.87, 8.7, "exp-001"),
+            ],
+            baseline_value=0.8,
+            metric_name="f1",
+        )
+        root = _parse(svg)
+        nodes = {e.get("data-tree-node") for e in root.iter() if e.get("data-tree-node")}
+        assert nodes == {"baseline", "exp-001", "exp-002", "exp-003"}
+        edges = {e.get("data-tree-edge") for e in root.iter() if e.get("data-tree-edge")}
+        assert edges == {
+            "baseline->exp-001",
+            "baseline->exp-002",
+            "exp-001->exp-003",
+        }
+        assert "<a " not in svg  # static rendering: no links
+
+        linked = tree_chart(
+            [TreeNode("exp-001", "Root", "promising", 0.85, None, None)],
+            baseline_value=0.8,
+            metric_name="f1",
+            link_base="/experiments",
+        )
+        assert "href='/experiments/exp-001'" in linked
+
+    def test_stats_and_tree_in_dashboard(
+        self, cli_runner: CliRunner, validated_project: Path, isolated_project_dir: Path
+    ) -> None:
+        result = cli_runner.invoke(app, ["dashboard", "--json"])
+        assert result.exit_code == 0, result.output
+        html = Path(json.loads(result.output)["path"]).read_text(encoding="utf-8")
+
+        assert "best score" in html
+        assert "0.85" in html and "+6.2%" in html  # winner + delta vs baseline 0.80
+        assert "1 kept · 1 discarded · 0 err" in html
+        assert "frontier" in html
+        assert "Experiment tree" in html
+        assert "data-tree-node='baseline'" in html
+        assert "data-tree-edge='baseline-&gt;exp-001'" in html or "baseline->exp-001" in html
+        assert "<script" not in html  # static file stays script-free

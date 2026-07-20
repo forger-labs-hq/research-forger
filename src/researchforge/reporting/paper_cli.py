@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import typer
 
-from researchforge.config.paths import researchforge_dir
 from researchforge.reporting.research_package import build_research_package
 from researchforge.storage.db import open_project_db
 from researchforge.utils.output import JsonOption
@@ -48,7 +47,9 @@ def package_command(
             typer.echo("No papers stored — run `researchforge research search` first.")
             raise typer.Exit(code=1)
 
-        target = output or (researchforge_dir() / PACKAGE_DIR_NAME)
+        from researchforge.config.settings import load_settings
+
+        target = output or Path(load_settings().research_output_dir).resolve()
         result = build_research_package(conn, target)
         from researchforge.analytics.service import record_event
 

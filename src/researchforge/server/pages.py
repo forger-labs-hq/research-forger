@@ -176,6 +176,7 @@ def overview_page(state: ProjectState) -> str:
             for d in state.deliverables
         )
         body.append(f"<h2>Deliverables</h2><ul>{items}</ul>")
+    body.append(locations_section(state))
     return page_shell(f"ResearchForge — {project.name}", "/", "".join(body), refresh_seconds(state))
 
 
@@ -602,4 +603,175 @@ def session_page(state: ProjectState, run_id: str) -> str:
 
     return page_shell(
         f"ResearchForge — session #{number}", "/research", "".join(body), refresh_seconds(state)
+    )
+
+
+def experiment_page(state: ProjectState, experiment_id: str) -> str:
+    """Everything recorded about one experiment: the click-through from the
+    tree, run pages, and results tables."""
+    experiment = next(e for e in state.experiments if e.experiment_id == experiment_id)
+    executions = sorted(
+        (e for e in state.executions if e.experiment_id == experiment_id),
+        key=lambda e: e.started_at,
+    )
+    hypothesis = next(
+        (h for h in state.hypotheses if h.hypothesis_id == experiment.hypothesis_id), None
+    )
+    children = [e for e in state.experiments if e.parent_experiment_id == experiment_id]
+    parent = next(
+        (e for e in state.experiments if e.experiment_id == experiment.parent_experiment_id),
+        None,
+    )
+    baseline_value = (
+        state.baseline.metrics.primary_metric.value
+        if state.baseline is not None and state.baseline.metrics is not None
+        else None
+    )
+
+    def latest_value(eid: str) -> float | None:
+        return next(
+            (
+                e.metrics.primary_metric.value
+                for e in reversed(state.executions)
+                if e.experiment_id == eid
+                and e.metrics is not None
+                and e.benchmark_stage is not BenchmarkStage.SCREENING
+            ),
+            None,
+        )
+
+    value = latest_value(experiment_id)
+    cards = [_card("status", _badge(experiment.status.value))]
+    if value is not None:
+        cards.append(_card("score", f"{value:g}"))
+        if baseline_value:
+            cards.append(
+                _card(
+                    "vs baseline",
+                    f"{(value - baseline_value) / abs(baseline_value):+.1%}",
+                    f"baseline {baseline_value:g}",
+                )
+            )
+        parent_value = latest_value(parent.experiment_id) if parent else None
+        if parent is not None and parent_value is not None:
+            cards.append(
+                _card(
+                    "vs parent",
+                    f"{(value - parent_value) / abs(parent_value):+.1%}",
+                    f"{parent.experiment_id} at {parent_value:g}",
+                )
+            )
+    run_id = next((e.run_id for e in executions), None)
+
+    body = [
+        f"<h1>{escape(experiment_id)} — {escape(experiment.title)}</h1>",
+        f"<p class='sub'>{escape(experiment.change_summary)}"
+        + (
+            f" · <a href='/runs/{escape(run_id)}'>run history</a> · "
+            f"<a href='/dashboard?run={escape(run_id)}'>charts</a>"
+            if run_id
+            else ""
+        )
+        + "</p>",
+        f"<div class='cards'>{''.join(cards)}</div>",
+    ]
+    if hypothesis is not None:
+        body.append(
+            f"<h2>Hypothesis</h2><p><strong>{escape(hypothesis.hypothesis_id)}</strong> — "
+            f"{escape(hypothesis.claim)}</p>"
+        )
+    lineage = []
+    if parent is not None:
+        lineage.append(
+            f"<li>parent: <a href='/experiments/{escape(parent.experiment_id)}'>"
+            f"{escape(parent.experiment_id)}</a> ({escape(parent.title)}, "
+            f"{escape(parent.status.value)})</li>"
+        )
+    for child in children:
+        child_value = latest_value(child.experiment_id)
+        value_text = f" at {child_value:g}" if child_value is not None else ""
+        lineage.append(
+            f"<li>child: <a href='/experiments/{escape(child.experiment_id)}'>"
+            f"{escape(child.experiment_id)}</a> ({escape(child.title)}, "
+            f"{escape(child.status.value)}{value_text})</li>"
+        )
+    if lineage:
+        body.append(f"<h2>Lineage</h2><ul>{''.join(lineage)}</ul>")
+    if experiment.decision is not None:
+        body.append(
+            f"<h2>Decision</h2><p>{escape(experiment.decision.outcome.value)} — "
+            f"{escape(experiment.decision.reason)}</p>"
+        )
+    body.append(
+        "<h2>Change</h2><ul>"
+        + "".join(f"<li><code>{escape(f)}</code></li>" for f in experiment.changed_files)
+        + "</ul>"
+    )
+    if executions:
+        rows = []
+        for execution in executions:
+            metric = (
+                f"{execution.metrics.primary_metric.value:g}"
+                if execution.metrics is not None
+                else "—"
+            )
+            constraints = "—"
+            if execution.constraints:
+                failed = [c.name for c in execution.constraints if c.passed is False]
+                constraints = f"violated: {', '.join(failed)}" if failed else "all passed"
+            rows.append(
+                f"<tr><td>{escape(execution.benchmark_stage.value)}</td>"
+                f"<td>{execution.attempt}</td>"
+                f"<td>{_badge(execution.status.value)}</td>"
+                f"<td>{metric}</td><td>{escape(constraints)}</td>"
+                f"<td>{_duration(execution.started_at, execution.completed_at)}</td>"
+                f"<td>{escape(execution.failure_reason or '')}</td></tr>"
+            )
+        body.append(
+            "<h2>Executions</h2><table><thead><tr><th>stage</th><th>#</th><th>status</th>"
+            "<th>value</th><th>constraints</th><th>duration</th><th>failure</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table>"
+        )
+        artifact_dirs = sorted({e.artifacts.diff_path.rsplit("/", 1)[0] for e in executions})
+        body.append(
+            "<h2>Artifacts on disk</h2><ul>"
+            + "".join(f"<li><code>{escape(d)}</code></li>" for d in artifact_dirs)
+            + "</ul>"
+        )
+    return page_shell(
+        f"ResearchForge — {experiment_id}", "/experiments", "".join(body), refresh_seconds(state)
+    )
+
+
+def locations_section(state: ProjectState) -> str:
+    """Where everything lives on disk (Overview page)."""
+    from researchforge.config.paths import (
+        artifacts_dir,
+        experiments_dir,
+        reports_dir,
+        researchforge_dir,
+        synthesis_dir,
+        worktrees_dir,
+    )
+    from researchforge.config.settings import load_settings
+
+    repo = state.project.repository.path or "."
+    entries = [
+        ("repository", repo),
+        ("state", str(researchforge_dir())),
+        ("worktrees", str(worktrees_dir())),
+        ("artifacts", str(artifacts_dir())),
+        ("reports", str(reports_dir())),
+        ("synthesis staging", str(synthesis_dir())),
+        ("experiments staging", str(experiments_dir())),
+        ("research output", load_settings().research_output_dir),
+    ]
+    items = "".join(
+        f"<li>{escape(label)}: <code>{escape(value)}</code></li>" for label, value in entries
+    )
+    return (
+        "<details class='session' id='locations'><summary>Locations "
+        "<span class='sub'>· where everything lives on disk</span></summary>"
+        f"<ul>{items}</ul>"
+        "<p class='sub'>`researchforge paths --json` prints the same map.</p></details>"
     )

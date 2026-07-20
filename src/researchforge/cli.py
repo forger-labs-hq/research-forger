@@ -15,6 +15,7 @@ from researchforge.analytics.cli import analytics_app
 from researchforge.analytics.service import record_event
 from researchforge.claude.cli import claude_app
 from researchforge.config.paths import is_initialized, researchforge_dir
+from researchforge.config.paths_cli import paths_command
 from researchforge.contract.cli import contract_app
 from researchforge.domain.project import Project, ProjectMode, ProjectStatus
 from researchforge.execution.cli import baseline_app
@@ -53,6 +54,7 @@ app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
 app.command("dashboard")(dashboard_command)
 app.command("serve")(serve_command)
+app.command("paths")(paths_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
 app.add_typer(claude_app, name="claude")
