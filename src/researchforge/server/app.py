@@ -17,6 +17,7 @@ from researchforge.server.pages import (
     refresh_seconds,
     research_page,
     run_page,
+    session_page,
 )
 
 
@@ -50,6 +51,13 @@ def create_app(base: Path | None = None) -> FastAPI:
         if not any(run.run_id == run_id for run in state.runs):
             raise HTTPException(status_code=404, detail=f"Unknown run: {run_id}")
         return run_page(state, run_id)
+
+    @app.get("/sessions/{search_run_id}", response_class=HTMLResponse)
+    def session_detail(search_run_id: str) -> str:
+        state = state_or_404()
+        if not any(str(run["run_id"]) == search_run_id for run in state.search_runs):
+            raise HTTPException(status_code=404, detail=f"Unknown session: {search_run_id}")
+        return session_page(state, search_run_id)
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(run: str | None = None) -> str:
