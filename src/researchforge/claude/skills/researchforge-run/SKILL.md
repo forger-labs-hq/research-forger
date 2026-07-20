@@ -24,13 +24,23 @@ What the engine does (so you can narrate it honestly):
 - failures and constraint violations are recorded, not retried silently.
 
 This can take a while (the plan's approval showed worst-case wall time).
-Offer the user a live view while it runs: `researchforge serve --open`
-starts a local read-only monitor whose Experiments page refreshes as each
-stage completes (needs `pip install "researchforge[serve]"`). If the
-process is interrupted or times out:
+`experiment run` auto-starts a background live monitor when available and
+prints `Live monitor: <url>` — **always relay that URL to the user** so
+they can watch stages complete in real time while you narrate results in
+chat (`researchforge serve --status` re-prints it; the monitor needs
+`pip install "researchforge[serve]"`). If the process is interrupted or
+times out:
 
 ```bash
 researchforge experiment resume <run-id> --json
+```
+
+If the user does not want to continue an interrupted run, discard it so a
+fresh batch starts clean (ask them first — this cancels unfinished
+experiments, though finished results are kept):
+
+```bash
+researchforge experiment abandon <run-id>
 ```
 
 When the run finishes, report per-experiment outcomes from the JSON — status,

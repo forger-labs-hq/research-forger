@@ -191,12 +191,45 @@ def _emit_summary(summary: object, json_output: bool) -> None:
     typer.echo(f"Next: {summary.next_action}")
 
 
+def _announce_monitor(json_output: bool, want_monitor: bool | None) -> None:
+    """Print (and, when wanted, auto-start) the live monitor for this run."""
+    import sys
+
+    from researchforge.server.monitor import ensure_background_monitor, read_monitor
+
+    if json_output:
+        return
+    existing = read_monitor()
+    if existing is not None:
+        typer.echo(f"Live monitor: {existing.url}")
+        return
+    auto = want_monitor if want_monitor is not None else sys.stdin.isatty()
+    if not auto:
+        return
+    record = ensure_background_monitor()
+    if record is not None:
+        typer.echo(f"Live monitor: {record.url}  (`researchforge serve --stop` to stop)")
+
+
+MonitorOption = typer.Option(
+    "--monitor/--no-monitor",
+    help="Start (or skip) the background live monitor for this run (default: auto on a TTY).",
+)
+
+
 @experiment_app.command("run")
 def run_command(
     plan_id: Annotated[str, typer.Argument(help="e.g. plan-001")],
+    monitor: Annotated[bool | None, MonitorOption] = None,
     json_output: JsonOption = False,
 ) -> None:
-    """Run the approved experiments: screening then full benchmark, one at a time."""
+    """Run the approved experiments: screening then full benchmark, one at a time.
+
+    The run executes in the foreground — Ctrl-C stops it safely (worktrees
+    stay isolated; `researchforge experiment resume <run-id>` continues, or
+    `researchforge experiment abandon <run-id>` discards the run).
+    """
+    _announce_monitor(json_output, monitor)
     from researchforge.domain.environment import ExecutionEngine
     from researchforge.execution.experiments import (
         ExperimentBlockedError,
@@ -231,11 +264,13 @@ def run_command(
 @experiment_app.command("resume")
 def resume_command(
     run_id: Annotated[str, typer.Argument(help="e.g. run-001")],
+    monitor: Annotated[bool | None, MonitorOption] = None,
     json_output: JsonOption = False,
 ) -> None:
     """Resume an interrupted run: stale stages are marked failed and retried."""
     from researchforge.execution.experiments import ExperimentBlockedError, resume_run
 
+    _announce_monitor(json_output, monitor)
     with closing(open_project_db()) as conn:
         try:
             summary = resume_run(conn, run_id)
@@ -243,6 +278,89 @@ def resume_command(
             typer.echo(str(exc))
             raise typer.Exit(code=1) from None
     _emit_summary(summary, json_output)
+
+
+@experiment_app.command("start")
+def start_command(
+    file: Annotated[Path, typer.Argument(help="Experiment plan artifact (plan.yaml).")],
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the interactive confirmation.")] = False,
+    monitor: Annotated[bool | None, MonitorOption] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Import, approve, and run a plan in one command (one typed approval).
+
+    Equivalent to `experiment import` + `experiment approve` + `experiment
+    run`, with the same validation layers and the same approval gate —
+    asked once. If you decline, the plan stays imported but unapproved.
+    """
+    with closing(open_project_db()) as conn:
+        result, plan = import_experiment_plan(conn, file)
+    if result.errors or plan is None:
+        echo_import_result(result.errors, result.warnings, "", json_output)
+        raise typer.Exit(code=1)
+    for warning in result.warnings:
+        typer.echo(f"warning: {warning}")
+
+    approve_command(plan_id=plan.plan_id, yes=yes, json_output=False)
+    run_command(plan_id=plan.plan_id, monitor=monitor, json_output=json_output)
+
+
+@experiment_app.command("abandon")
+def abandon_command(
+    run_id: Annotated[str, typer.Argument(help="e.g. run-001")],
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the interactive confirmation.")] = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Discard an interrupted run so a new plan can start clean.
+
+    Marks the run cancelled and cancels its unfinished experiments.
+    Finished results (promising, rejected, failed) are kept — they remain
+    part of the record. Completed runs cannot be abandoned.
+    """
+    from researchforge.domain.experiment import RunStatus
+    from researchforge.storage.experiment_repository import get_run, update_run
+
+    with closing(open_project_db()) as conn:
+        run = get_run(conn, run_id)
+        if run is None:
+            typer.echo(f"Unknown run: {run_id}.")
+            raise typer.Exit(code=1)
+        if run.status is RunStatus.COMPLETED:
+            typer.echo(f"{run_id} is completed — nothing to abandon.")
+            raise typer.Exit(code=1)
+        if run.status is RunStatus.CANCELLED:
+            typer.echo(f"{run_id} is already abandoned.")
+            return
+        if not yes:
+            confirmation = typer.prompt(f"Type 'abandon' to discard {run_id}")
+            if confirmation.strip().lower() != "abandon":
+                raise typer.Exit(code=1)
+
+        cancelled = []
+        for experiment in list_experiments(conn, run.plan_id):
+            if experiment.status in (
+                ExperimentStatus.PLANNED,
+                ExperimentStatus.APPROVED,
+                ExperimentStatus.PREPARING,
+                ExperimentStatus.RUNNING,
+            ):
+                update_experiment(
+                    conn,
+                    experiment.model_copy(
+                        update={"status": advance(experiment.status, ExperimentStatus.CANCELLED)}
+                    ),
+                )
+                cancelled.append(experiment.experiment_id)
+        update_run(conn, run.model_copy(update={"status": RunStatus.CANCELLED}))
+        update_plan_status(conn, run.plan_id, PlanStatus.CANCELLED)
+
+    if json_output:
+        typer.echo(json.dumps({"run_id": run_id, "status": "cancelled", "experiments": cancelled}))
+    else:
+        typer.echo(
+            f"{run_id} abandoned ({len(cancelled)} unfinished experiment(s) cancelled). "
+            "Plan a new batch with `researchforge experiment plan <hyp-id>`."
+        )
 
 
 @experiment_app.command("list")

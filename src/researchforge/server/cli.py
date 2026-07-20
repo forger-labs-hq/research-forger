@@ -8,6 +8,14 @@ from typing import Annotated
 import typer
 
 from researchforge.config.paths import is_initialized
+from researchforge.server.monitor import (
+    DEFAULT_PORT,
+    monitor_path,
+    pick_port,
+    read_monitor,
+    spawn_background_monitor,
+    stop_monitor,
+)
 
 INSTALL_HINT = (
     "The monitoring server needs the optional dependencies — install with:\n"
@@ -15,26 +23,67 @@ INSTALL_HINT = (
 )
 
 
+def _require_serve_deps() -> None:
+    try:
+        import uvicorn  # noqa: F401
+
+        import researchforge.server.app  # noqa: F401
+    except ImportError:
+        typer.echo(INSTALL_HINT)
+        raise typer.Exit(code=1) from None
+
+
 def serve_command(
     host: Annotated[
         str, typer.Option("--host", help="Bind address (loopback by default; change with care).")
     ] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8500,
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            min=1,
+            max=65535,
+            help=f"Preferred port (default {DEFAULT_PORT}); falls back to a free one if busy.",
+        ),
+    ] = DEFAULT_PORT,
+    background: Annotated[
+        bool,
+        typer.Option("--background", help="Run detached; manage with --status / --stop."),
+    ] = False,
+    stop: Annotated[
+        bool, typer.Option("--stop", help="Stop the background monitor and exit.")
+    ] = False,
+    status: Annotated[
+        bool, typer.Option("--status", help="Show whether a background monitor is running.")
+    ] = False,
     open_browser: Annotated[
         bool, typer.Option("--open", help="Open the monitor in the default browser.")
     ] = False,
+    foreground: Annotated[
+        bool, typer.Option("--foreground", hidden=True, help="Internal: plain foreground run.")
+    ] = False,
 ) -> None:
     """Run the live monitoring server (read-only view of this project)."""
+    if stop:
+        stopped = stop_monitor()
+        if stopped is None:
+            typer.echo("No background monitor running.")
+        else:
+            typer.echo(f"Stopped background monitor (pid {stopped.pid}, {stopped.url}).")
+        return
+
+    if status:
+        record = read_monitor()
+        if record is None:
+            typer.echo("No background monitor running.")
+        else:
+            typer.echo(f"Background monitor running: {record.url} (pid {record.pid})")
+        return
+
     if not is_initialized():
         typer.echo("Not an initialized ResearchForge project. Run `researchforge init`.")
         raise typer.Exit(code=1)
-    try:
-        import uvicorn
-
-        from researchforge.server.app import create_app
-    except ImportError:
-        typer.echo(INSTALL_HINT)
-        raise typer.Exit(code=1) from None
+    _require_serve_deps()
 
     if host not in ("127.0.0.1", "localhost", "::1"):
         typer.echo(
@@ -43,8 +92,41 @@ def serve_command(
             "read everything."
         )
 
-    url = f"http://{host}:{port}/"
+    if background:
+        existing = read_monitor()
+        if existing is not None:
+            typer.echo(f"Background monitor already running: {existing.url} (pid {existing.pid})")
+            if open_browser:
+                webbrowser.open(existing.url)
+            return
+        chosen = pick_port(host, port)
+        if chosen != port:
+            typer.echo(f"Port {port} is busy — using {chosen} instead.")
+        record = spawn_background_monitor(host, chosen)
+        typer.echo(
+            f"Monitoring in the background at {record.url} (pid {record.pid}; "
+            "`researchforge serve --stop` to stop)"
+        )
+        if open_browser:
+            webbrowser.open(record.url)
+        return
+
+    import uvicorn
+
+    from researchforge.server.app import create_app
+
+    chosen = pick_port(host, port)
+    if chosen != port:
+        typer.echo(f"Port {port} is busy — using {chosen} instead.")
+    url = f"http://{host}:{chosen}/"
     typer.echo(f"Monitoring at {url} (read-only; Ctrl-C to stop)")
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+    try:
+        uvicorn.run(create_app(), host=host, port=chosen, log_level="warning")
+    finally:
+        if foreground:
+            # We may be the recorded background monitor; clear the stale record.
+            record = read_monitor()
+            if record is not None and record.port == chosen:
+                monitor_path().unlink(missing_ok=True)
