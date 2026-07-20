@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,7 @@ class TestPages:
         assert "Next action" in response.text
         assert "ship branch" in response.text  # validated fixture's next step
         assert "read-only monitor" in response.text
-        assert "content='10'" in response.text  # no run in progress -> slow refresh
+        assert "content='30'" in response.text  # no run in progress -> slow refresh
 
     def test_research_empty_state_is_honest(self, client) -> None:  # type: ignore[no-untyped-def]
         response = client.get("/research")
@@ -80,7 +81,7 @@ class TestSessions:
         assert "Research sessions (1)" in text
         assert "Search session #1" in text
         assert "all:routing" in text  # the session's query shown
-        assert "<details class='session' open>" in text or "<details class='session'open>" in text
+        assert re.search(r"<details class='session' id='[^']+' open>", text)
         assert linked[0] in text  # a session paper rendered inside
         assert "All stored papers" in text
 
@@ -140,11 +141,64 @@ class TestSessions:
         assert "feasibility: high" in text
         assert "Supporting papers" in text
 
+    def test_session_drilldown_page(
+        self, cli_runner: CliRunner, initialized_project: Path, patched_arxiv: None
+    ) -> None:
+        import shutil
+        from contextlib import closing
+
+        from fastapi.testclient import TestClient
+
+        from researchforge.server.app import create_app
+        from researchforge.storage.db import open_project_db
+        from researchforge.storage.paper_repository import list_search_runs
+
+        artifacts = Path(__file__).parent.parent / "fixtures" / "artifacts"
+        assert (
+            cli_runner.invoke(cli_app, ["research", "search", "-q", "all:routing"]).exit_code == 0
+        )
+        for fixture, command in (
+            ("landscape_valid.yaml", ["research", "landscape", "--import"]),
+            ("hypotheses_valid.yaml", ["hypotheses", "import"]),
+        ):
+            target = initialized_project / fixture
+            shutil.copy(artifacts / fixture, target)
+            assert cli_runner.invoke(cli_app, [*command, str(target)]).exit_code == 0
+
+        with closing(open_project_db()) as conn:
+            run_id = str(list_search_runs(conn)[0]["run_id"])
+
+        client = TestClient(create_app())
+        response = client.get(f"/sessions/{run_id}")
+        assert response.status_code == 200
+        text = response.text
+        assert "Search session #1" in text
+        assert "Papers this session selected" in text
+        # The fixture landscape/hypotheses cite the searched papers.
+        assert "Directions citing this session's papers" in text
+        assert "Hypotheses citing this session's papers" in text
+        assert "Underexplored aspects" in text  # full direction detail reused
+
+        assert client.get("/sessions/nope").status_code == 404
+
+        # The research page links into the session.
+        research = client.get("/research").text
+        assert f"/sessions/{run_id}" in research
+
+    def test_state_keeper_script_and_ids(self, client) -> None:  # type: ignore[no-untyped-def]
+        import re
+
+        response = client.get("/experiments")
+        assert "sessionStorage" in response.text  # inline state-keeper present
+        details = re.findall(r"<details class='session'[^>]*>", response.text)
+        assert details and all("id='" in d for d in details)
+        assert "content='30'" in response.text  # idle refresh slowed to 30s
+
     def test_experiment_runs_are_collapsible_sessions(self, client) -> None:  # type: ignore[no-untyped-def]
         response = client.get("/experiments")
         text = response.text
         assert text.count("<details class='session'") >= 1
-        assert "<details class='session' open>" in text  # latest run expanded
+        assert re.search(r"<details class='session' id='[^']+' open>", text)  # latest expanded
         assert "full history" in text
 
     def test_overview_counts_sessions(self, client) -> None:  # type: ignore[no-untyped-def]
