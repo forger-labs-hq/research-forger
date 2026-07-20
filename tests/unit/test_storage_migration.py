@@ -26,6 +26,7 @@ _V2_TABLE_NAMES = {
 _V3_TABLE_NAMES = {"contracts", "baseline_runs"}
 _V4_TABLE_NAMES = {"experiment_plans", "experiments", "experiment_runs", "experiment_executions"}
 _V5_TABLE_NAMES = {"deliverables"}
+_V6_TABLE_NAMES = {"search_run_papers"}
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
@@ -58,7 +59,11 @@ def test_v1_db_upgrades_to_current_preserving_data(tmp_path: Path) -> None:
 
         assert (
             _table_names(conn)
-            >= _V2_TABLE_NAMES | _V3_TABLE_NAMES | _V4_TABLE_NAMES | _V5_TABLE_NAMES
+            >= _V2_TABLE_NAMES
+            | _V3_TABLE_NAMES
+            | _V4_TABLE_NAMES
+            | _V5_TABLE_NAMES
+            | _V6_TABLE_NAMES
         )
 
         version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
@@ -81,9 +86,9 @@ def test_fresh_db_gets_current_schema_directly(tmp_path: Path) -> None:
         assert {
             "meta",
             "projects",
-        } | _V2_TABLE_NAMES | _V3_TABLE_NAMES | _V4_TABLE_NAMES | _V5_TABLE_NAMES <= _table_names(
-            conn
-        )
+        } | _V2_TABLE_NAMES | _V3_TABLE_NAMES | _V4_TABLE_NAMES | _V5_TABLE_NAMES | (
+            _V6_TABLE_NAMES
+        ) <= _table_names(conn)
         version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
             "value"
         ]
@@ -99,7 +104,11 @@ def test_ensure_schema_is_idempotent(tmp_path: Path) -> None:
         ensure_schema(conn)  # must not raise
         assert (
             _table_names(conn)
-            >= _V2_TABLE_NAMES | _V3_TABLE_NAMES | _V4_TABLE_NAMES | _V5_TABLE_NAMES
+            >= _V2_TABLE_NAMES
+            | _V3_TABLE_NAMES
+            | _V4_TABLE_NAMES
+            | _V5_TABLE_NAMES
+            | _V6_TABLE_NAMES
         )
     finally:
         conn.close()

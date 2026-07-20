@@ -44,6 +44,8 @@ class ProjectState(BaseModel):
     project: Project
     next_action: str
     papers: list[Paper] = Field(default_factory=list)
+    search_runs: list[dict[str, object]] = Field(default_factory=list)
+    search_run_papers: dict[str, list[str]] = Field(default_factory=dict)
     landscape: ResearchLandscape | None = None
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     contract: ExperimentContract | None = None
@@ -74,7 +76,11 @@ def read_state(base: Path | None = None) -> ProjectState:
         list_runs,
     )
     from researchforge.storage.hypothesis_repository import list_hypotheses
-    from researchforge.storage.paper_repository import list_papers
+    from researchforge.storage.paper_repository import (
+        list_papers,
+        list_search_runs,
+        papers_for_search_run,
+    )
     from researchforge.storage.project_repository import get_project
     from researchforge.storage.synthesis_repository import get_landscape
 
@@ -102,10 +108,16 @@ def read_state(base: Path | None = None) -> ProjectState:
             ),
             conn=conn,
         )
+        search_runs = list_search_runs(conn)
         return ProjectState(
             project=project,
             next_action=next_action,
             papers=papers,
+            search_runs=search_runs,
+            search_run_papers={
+                str(run["run_id"]): papers_for_search_run(conn, str(run["run_id"]))
+                for run in search_runs
+            },
             landscape=landscape,
             hypotheses=hypotheses,
             contract=contract,

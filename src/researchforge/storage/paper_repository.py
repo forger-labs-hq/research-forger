@@ -77,6 +77,7 @@ def record_search_run(
     fetched_count: int,
     deduped_count: int,
     selected_count: int,
+    paper_ids: list[str] | None = None,
 ) -> str:
     run_id = uuid4().hex
     with conn:
@@ -97,7 +98,27 @@ def record_search_run(
                 datetime.now(UTC).isoformat(),
             ),
         )
+        for paper_id in paper_ids or []:
+            conn.execute(
+                "INSERT OR IGNORE INTO search_run_papers (run_id, paper_id) VALUES (?, ?)",
+                (run_id, paper_id),
+            )
     return run_id
+
+
+def papers_for_search_run(conn: sqlite3.Connection, run_id: str) -> list[str]:
+    """Paper ids the given search run selected (empty for pre-v6 legacy runs).
+
+    Tolerates a missing link table: read-only consumers (the monitor) may
+    open a database created before schema v6 that they cannot migrate.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT paper_id FROM search_run_papers WHERE run_id = ?", (run_id,)
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [row["paper_id"] for row in rows]
 
 
 def list_search_runs(conn: sqlite3.Connection) -> list[dict[str, object]]:

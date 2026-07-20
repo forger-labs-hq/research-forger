@@ -21,7 +21,7 @@ from pathlib import Path
 
 from researchforge.config.paths import db_path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _V1_TABLES = [
     """
@@ -207,12 +207,23 @@ _V5_TABLES = [
     """,
 ]
 
+_V6_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS search_run_papers (
+        run_id TEXT NOT NULL,
+        paper_id TEXT NOT NULL,
+        PRIMARY KEY (run_id, paper_id)
+    )
+    """,
+]
+
 _MIGRATIONS: dict[int, list[str]] = {
     1: _V1_TABLES,
     2: _V2_TABLES,
     3: _V3_TABLES,
     4: _V4_TABLES,
     5: _V5_TABLES,
+    6: _V6_TABLES,
 }
 
 
