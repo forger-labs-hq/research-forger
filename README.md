@@ -78,20 +78,6 @@ rejected for violating the latency budget, and one fails (all three stay in
 the record). [examples/docker-python](examples/docker-python/README.md) is
 the same demo under Docker isolation.
 
-## What you get
-
-- **Explore a research idea** → an arXiv-backed research landscape, graded
-  evidence (published claim vs interpretation vs speculation), testable
-  hypotheses, and a citation-backed report.
-  Details: [docs/research-mode.md](docs/research-mode.md)
-- **Improve a repository** → all of the above, plus: an approved benchmark
-  contract, a frozen baseline, a screening → full → validation experiment
-  funnel over Claude-authored patches, Pareto-ranked results with rejected
-  approaches preserved, and shipping — a clean local branch, an opt-in
-  draft PR, the engineering report, and a research bundle (BibTeX, paper
-  outline, reproducibility data).
-  Details: [docs/experiment-mode.md](docs/experiment-mode.md)
-
 ## Watch your experiments (dashboard + live monitor)
 
 Two ways to *see* how experiments perform against the baseline:
@@ -108,62 +94,109 @@ the hard-constraint line, the funnel with drop-offs, and validation spread.
 
 ```bash
 pip install "researchforge[serve]"
-researchforge serve --open           # live monitor at http://127.0.0.1:8500
+researchforge serve --background     # always-on monitor at http://127.0.0.1:9000
 ```
 
 A local web monitor that follows runs **as they happen**: overview with the
 next action, research state (papers, landscape directions, hypotheses), a
 per-run experiments table that refreshes every 3 seconds while a run is in
-progress, the live chart dashboard, and a JSON API (`/api/state`). The
-server opens the database **read-only** and binds 127.0.0.1 only by
-default — watching can never interfere with a run.
+progress, the live chart dashboard, and a JSON API (`/api/state`). Once the
+extra is installed, `experiment run`/`start` auto-start it and print the
+URL; if port 9000 is taken it picks a free one and tells you. Manage it
+with `researchforge serve --status` / `--stop`. The server opens the
+database **read-only** and binds 127.0.0.1 only by default — watching can
+never interfere with a run.
 
-## Use without Claude (plain CLI)
+## Journey A — research an idea
 
-Everything works from the terminal alone — the only difference is that the
-synthesis steps Claude would do (the landscape, hypotheses, and experiment
-patches) become files **you** write, against schemas the CLI exports and
-validates. `researchforge status` names the next command at every point.
-
-**Research a question:**
+You have a question; ResearchForge grounds it in literature. From Claude
+Code, `/researchforge-start` with your question does all of this; the CLI
+equivalent (where **you** write the synthesis files against exported
+schemas) is:
 
 ```bash
 researchforge project create --mode explore_research_idea --objective "..."
 researchforge research search        # arXiv: fetch -> dedup -> rank -> store
 researchforge research context       # exports context.json with the schemas
-# you write .researchforge/synthesis/landscape.yaml + hypotheses.yaml
+# Claude (or you) writes landscape.yaml + hypotheses.yaml — validated on import:
 researchforge research landscape --import .researchforge/synthesis/landscape.yaml
 researchforge hypotheses import .researchforge/synthesis/hypotheses.yaml
 researchforge report build           # citation-backed report
+researchforge paper package          # optional: BibTeX, outline, evidence matrix
 ```
 
-**Improve a repository:**
+**You end up with:** a research landscape (directions + graded evidence:
+published claim vs interpretation vs speculation), testable hypotheses, a
+citation-backed Markdown report, and optionally a full research bundle.
+Details: [docs/research-mode.md](docs/research-mode.md)
+
+## Journey B — improve a repository
+
+Everything in Journey A, then benchmarked experiments on your code. Every
+consequential step is **your** typed approval — Claude cannot approve, run,
+or ship anything by itself.
+
+**1. Define and freeze the evaluation:**
 
 ```bash
 researchforge project create --mode improve_repository --objective "..."
 researchforge repo scan
 researchforge contract generate      # edit researchforge.yaml, then:
-researchforge contract approve       # typed approval -> frozen evaluation
-researchforge baseline run
-researchforge experiment plan hyp-001   # exports the plan schema + contract
-# you write .researchforge/experiments/plan.yaml + patches/*.patch
-researchforge experiment import .researchforge/experiments/plan.yaml
-researchforge experiment approve plan-001
-researchforge experiment run plan-001   # screening -> full funnel
-researchforge validate run-001          # repeated runs -> validated
-researchforge ship branch && researchforge report build
+researchforge contract approve       # YOUR approval -> immutable contract
+researchforge baseline run           # frozen reference measurement
 ```
 
-Full walkthroughs: [docs/research-mode.md](docs/research-mode.md) and
-[docs/experiment-mode.md](docs/experiment-mode.md).
+**2. Run experiments** (Claude writes `plan.yaml` + one patch per variant
+after `researchforge experiment plan hyp-001`; manually you write them
+against the exported schema):
+
+```bash
+researchforge experiment start .researchforge/experiments/plan.yaml
+# = import + ONE typed approval (shows worst-case wall time) + run
+```
+
+**3. Inspect and validate:**
+
+```bash
+researchforge results show run-001   # ranking, trade-offs, rejections
+researchforge validate run-001       # repeated runs earn "validated"
+```
+
+**4. Accept the result → what ships (and how the PR happens):**
+
+```bash
+researchforge ship branch    # clean LOCAL branch on the frozen baseline —
+                             # one commit, nothing pushed, inspect with git
+researchforge report build   # engineering report: the full evidence chain
+researchforge ship pr        # OPT-IN: push + open a DRAFT PR on YOUR repo
+```
+
+`ship pr` is how the pull request gets created, and it only works when all
+three gates open: `shipping.allow_draft_pr: true` in the **approved**
+contract, the **`gh` CLI authenticated** to your remote, and a typed
+`push` confirmation from you. It pushes exactly one branch and opens a
+**draft** PR for human review — nothing is ever pushed without those
+gates. Prefer full control? Stop after `ship branch` and push/PR yourself
+with plain git. Details: [docs/experiment-mode.md](docs/experiment-mode.md)
+
+### Managing experiment runs
+
+| I want to… | Command |
+|---|---|
+| start a batch (one command) | `researchforge experiment start plan.yaml` |
+| watch it live | `researchforge serve --background` (URL is printed) |
+| stop a running batch | **Ctrl-C** — always safe (isolated worktrees) |
+| continue an interrupted run | `researchforge experiment resume run-001` |
+| discard an interrupted run | `researchforge experiment abandon run-001` |
+| run another batch | `researchforge experiment plan hyp-002` → start again |
+| see what's next, always | `researchforge status` |
+| reset the whole project | `rm -rf .researchforge researchforge.yaml` |
+
+Everything is local; nothing outside your repository is ever created. To
+redefine just the objective on existing data:
+`researchforge project create --force-update`.
 [docs/claude-mode.md](docs/claude-mode.md) explains exactly what the Claude
 skills do and cannot do.
-
-**Start over:** all state is local. `rm -rf .researchforge researchforge.yaml`
-resets a project completely (add `researchforge claude uninstall` first if
-you want the skills gone too); to redefine just the objective on existing
-data, use `researchforge project create --force-update`. Nothing outside
-your repository is ever created.
 
 ## Supported repositories (beta)
 

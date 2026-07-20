@@ -70,9 +70,8 @@ researchforge baseline run            # frozen: f1 = 0.75, p95 = 72 ms
 ```bash
 researchforge experiment plan hyp-001
 # Claude writes plan.yaml + patches/ (docs/experiment-mode.md)
-researchforge experiment import .researchforge/experiments/plan.yaml
-researchforge experiment approve plan-001
-researchforge experiment run plan-001       # screening -> full, one at a time
+researchforge experiment start .researchforge/experiments/plan.yaml
+# = import + one typed approval + run (screening -> full, one at a time)
 ```
 
 With the three canonical variants: `NORMALIZE = True` reaches **f1 0.90**

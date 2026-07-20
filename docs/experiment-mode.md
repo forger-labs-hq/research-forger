@@ -36,12 +36,26 @@ researchforge paper package                # research bundle (BibTeX, outline, d
 `researchforge status` shows the next step at every stage. All commands
 support `--json`.
 
-**Monitor live:** `researchforge serve --open` (after
+**Monitor live:** `researchforge serve --background` (after
 `pip install "researchforge[serve]"`) starts a local, **read-only** web
-monitor — overview, research state, an experiments page that refreshes as
-each funnel stage completes, and the live dashboard charts. It binds
-127.0.0.1 only by default and opens the database in read-only mode, so
-watching can never interfere with a run.
+monitor at `http://127.0.0.1:9000` (a free port is picked automatically if
+that one is busy) — overview, research state, an experiments page that
+refreshes as each funnel stage completes, and the live dashboard charts.
+`experiment run`/`start` auto-start it on a TTY and print the URL; manage
+it with `serve --status` / `serve --stop`. It binds 127.0.0.1 only by
+default and opens the database in read-only mode, so watching can never
+interfere with a run.
+
+**Run lifecycle at a glance:**
+
+| I want to… | Command |
+|---|---|
+| import + approve + run in one step | `experiment start plan.yaml` (one typed approval) |
+| stop a running batch | Ctrl-C — safe; worktrees are isolated |
+| continue an interrupted run | `experiment resume run-XXX` |
+| discard an interrupted run | `experiment abandon run-XXX` (finished results are kept) |
+| cancel a not-yet-run plan | `experiment cancel plan-XXX` |
+| start the next batch | `experiment plan <hyp-id>` → `experiment start …` |
 
 ## The contract is the boundary
 
