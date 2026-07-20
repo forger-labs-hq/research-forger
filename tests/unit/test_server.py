@@ -359,3 +359,57 @@ class TestServeCli:
         result = cli_runner.invoke(cli_app, ["serve", "--host", "0.0.0.0"])
         assert result.exit_code == 0
         assert "WARNING" in result.output
+
+
+class TestExperimentDrilldown:
+    def test_experiment_page(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/experiments/exp-001")
+        assert response.status_code == 200
+        text = response.text
+        assert "exp-001" in text and "score" in text
+        assert "vs baseline" in text
+        assert "Executions" in text and "validation" in text
+        assert "Change" in text and "src/algo.py" in text
+        assert "Artifacts on disk" in text
+        assert client.get("/experiments/exp-999").status_code == 404
+
+    def test_dashboard_tree_links_to_drilldown(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/dashboard")
+        assert "href='/experiments/exp-001'" in response.text
+
+    def test_overview_locations(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/")
+        assert "Locations" in response.text
+        assert "worktrees" in response.text
+
+
+class TestPathsCli:
+    def test_paths_json(
+        self, cli_runner: CliRunner, funnel_project: Path, isolated_project_dir: Path
+    ) -> None:
+        result = cli_runner.invoke(cli_app, ["paths", "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        for key in (
+            "repo_root",
+            "state_dir",
+            "database",
+            "worktrees",
+            "artifacts",
+            "reports",
+            "research_output",
+        ):
+            assert key in payload
+
+    def test_paths_respects_configured_research_output_dir(
+        self, cli_runner: CliRunner, funnel_project: Path, isolated_project_dir: Path
+    ) -> None:
+        config = isolated_project_dir / ".researchforge" / "config.json"
+        config.write_text(json.dumps({"research_output_dir": "out/bundle"}), encoding="utf-8")
+        result = cli_runner.invoke(cli_app, ["paths", "--json"])
+        payload = json.loads(result.output)
+        assert payload["research_output"].endswith("out/bundle")
+
+    def test_uninitialized_refused(self, cli_runner: CliRunner, isolated_project_dir: Path) -> None:
+        result = cli_runner.invoke(cli_app, ["paths"])
+        assert result.exit_code == 1

@@ -406,3 +406,114 @@ def spread_chart(rows: list[SpreadRow], baseline_value: float, metric_name: str)
             )
     parts.append("</svg>")
     return "".join(parts)
+
+
+@dataclass
+class TreeNode:
+    experiment_id: str
+    title: str
+    status: str
+    value: float | None = None
+    delta_pct: float | None = None
+    parent_id: str | None = None  # None = child of the baseline root
+
+
+def tree_chart(
+    nodes: list[TreeNode],
+    baseline_value: float,
+    metric_name: str,
+    link_base: str | None = None,
+) -> str:
+    """The experiment tree: baseline root, one card per experiment, edges to
+    parents. Linear projects render as one column of roots — same chart."""
+    by_id = {node.experiment_id: node for node in nodes}
+
+    def depth_of(node: TreeNode) -> int:
+        depth, current = 0, node.parent_id
+        seen = set()
+        while current is not None and current in by_id and current not in seen:
+            seen.add(current)
+            depth += 1
+            current = by_id[current].parent_id
+        return depth
+
+    columns: dict[int, list[TreeNode]] = {}
+    for node in nodes:
+        columns.setdefault(depth_of(node) + 1, []).append(node)  # column 0 = baseline
+
+    node_w, node_h, gap_x, gap_y, pad = 190, 64, 60, 18, 16
+    max_depth = max(columns.keys(), default=0)
+    rows = max([1] + [len(items) for items in columns.values()])
+    width = pad * 2 + (max_depth + 1) * node_w + max_depth * gap_x
+    height = pad * 2 + rows * node_h + (rows - 1) * gap_y
+
+    positions: dict[str, tuple[float, float]] = {}
+
+    def place(column: int, index: int) -> tuple[float, float]:
+        x = pad + column * (node_w + gap_x)
+        y = pad + index * (node_h + gap_y)
+        return x, y
+
+    parts = [f"<svg viewBox='0 0 {width} {height}' role='img' xmlns='http://www.w3.org/2000/svg'>"]
+    # Baseline root card.
+    bx, by = place(0, 0)
+    parts.append(
+        f"<rect x='{bx}' y='{by}' width='{node_w}' height='{node_h}' rx='8' "
+        f"fill='var(--card)' stroke='{BASELINE_COLOR}' stroke-width='1.5' "
+        "data-tree-node='baseline'/>"
+        f"<text x='{bx + 10}' y='{by + 24}' {FONT} font-size='12' font-weight='bold' "
+        f"fill='{BASELINE_COLOR}'>baseline</text>"
+        f"<text x='{bx + 10}' y='{by + 44}' {FONT} font-size='12' fill='var(--fg)'>"
+        f"{escape(metric_name)} = {_fmt(baseline_value)}</text>"
+    )
+    positions["__baseline__"] = (bx, by)
+
+    for column in sorted(k for k in columns if k > 0):
+        for index, node in enumerate(columns[column]):
+            x, y = place(column, index)
+            positions[node.experiment_id] = (x, y)
+            value_text = _fmt(node.value) if node.value is not None else "—"
+            if node.delta_pct is not None:
+                value_text += f" ({node.delta_pct:+.1f}%)"
+            title = node.title if len(node.title) <= 26 else node.title[:25] + "…"
+            card = (
+                f"<rect x='{x}' y='{y}' width='{node_w}' height='{node_h}' rx='8' "
+                f"fill='var(--card)' stroke='{status_color(node.status)}' stroke-width='1.5' "
+                f"data-tree-node='{escape(node.experiment_id)}' "
+                f"data-status='{escape(node.status)}'/>"
+                f"<text x='{x + 10}' y='{y + 20}' {FONT} font-size='11' font-weight='bold' "
+                f"fill='var(--fg)'>{escape(node.experiment_id)}</text>"
+                f"<text x='{x + 10}' y='{y + 36}' {FONT} font-size='10' "
+                f"fill='var(--fg-muted)'>{escape(title)}</text>"
+                f"<text x='{x + 10}' y='{y + 54}' {FONT} font-size='11' "
+                f"fill='{status_color(node.status)}'>{escape(value_text)} · "
+                f"{escape(node.status)}</text>"
+            )
+            if link_base is not None:
+                card = f"<a href='{link_base}/{escape(node.experiment_id)}'>{card}</a>"
+            parts.append(card)
+
+    # Edges under the cards (prepend after svg open so cards draw on top).
+    edges = []
+    for node in nodes:
+        child = positions.get(node.experiment_id)
+        if child is None:
+            continue
+        parent = (
+            positions.get(node.parent_id)
+            if node.parent_id is not None and node.parent_id in positions
+            else positions["__baseline__"]
+        )
+        if parent is None:
+            parent = positions["__baseline__"]
+        x1, y1 = parent[0] + node_w, parent[1] + node_h / 2
+        x2, y2 = child[0], child[1] + node_h / 2
+        mid = (x1 + x2) / 2
+        edges.append(
+            f"<polyline points='{x1},{y1} {mid},{y1} {mid},{y2} {x2},{y2}' fill='none' "
+            f"stroke='var(--grid)' stroke-width='1.5' data-tree-edge='"
+            f"{escape(node.parent_id or 'baseline')}->{escape(node.experiment_id)}'/>"
+        )
+    parts.insert(1, "".join(edges))
+    parts.append("</svg>")
+    return "".join(parts)

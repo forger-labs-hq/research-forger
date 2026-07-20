@@ -35,12 +35,14 @@ from researchforge.reporting.svg_charts import (
     Point,
     ProgressPoint,
     SpreadRow,
+    TreeNode,
     bar_chart,
     funnel_chart,
     progress_chart,
     scatter_chart,
     spread_chart,
     status_color,
+    tree_chart,
 )
 
 DASHBOARD_CSS = """
@@ -67,6 +69,7 @@ h2 { font-size: 1.1rem; margin: 32px 0 10px; }
 .card .k { color: var(--fg-muted); font-size: 0.75rem; text-transform: uppercase; }
 .card .v { font-size: 1.25rem; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
 .card .d { color: var(--fg-muted); font-size: 0.8rem; margin-top: 2px; }
+.card.stat .v { font-size: 1.8rem; letter-spacing: -0.02em; }
 svg { width: 100%; height: auto; background: var(--card); border-radius: 8px; padding: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--grid);
@@ -237,7 +240,11 @@ def _funnel(
     return stages, notes
 
 
-def build_dashboard(conn: sqlite3.Connection, run: ExperimentRunGroup | None) -> str:
+def build_dashboard(
+    conn: sqlite3.Connection,
+    run: ExperimentRunGroup | None,
+    link_base: str | None = None,
+) -> str:
     """Assemble the dashboard HTML from stored records."""
     from researchforge.storage.baseline_repository import get_latest_successful_baseline
     from researchforge.storage.contract_repository import get_active_contract
@@ -267,6 +274,36 @@ def build_dashboard(conn: sqlite3.Connection, run: ExperimentRunGroup | None) ->
         )
 
     sections = [_header_section(project.name, spec, contract, baseline, run)]
+
+    all_experiments = list_experiments(conn)
+    all_executions = list_executions(conn)
+    stats = build_stats(
+        baseline,
+        all_experiments,
+        all_executions,
+        ranking,
+        spec.objective.primary_metric.direction,
+    )
+    stat_cards = "".join(
+        f"<div class='card stat'><div class='k'>{escape(label)}</div>"
+        f"<div class='v'>{escape(value)}</div><div class='d'>{escape(detail)}</div></div>"
+        for label, value, detail in stats
+    )
+    sections.append(f"<div class='cards'>{stat_cards}</div>")
+
+    nodes = tree_nodes(all_experiments, all_executions, ranking)
+    if nodes:
+        chart = tree_chart(
+            nodes,
+            baseline.metrics.primary_metric.value,
+            primary,
+            link_base=link_base,
+        )
+        sections.append(
+            f"<h2>Experiment tree</h2>{chart}"
+            "<p class='sub'>Every experiment builds on the baseline or on its parent "
+            "(branched). Values are measured against the frozen baseline.</p>"
+        )
 
     all_points = progress_points(
         list_experiments(conn),
@@ -500,3 +537,69 @@ def _table_section(
         "(full)</th><th>decision</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
     )
+
+
+def build_stats(
+    baseline: BaselineRun,
+    experiments: list[Experiment],
+    executions: list[ExperimentExecution],
+    ranking: RankingReport | None,
+    direction: MetricDirection,
+) -> list[tuple[str, str, str]]:
+    """Headline stat cards: (label, value, detail) — recorded data only."""
+    assert baseline.metrics is not None
+    base_value = baseline.metrics.primary_metric.value
+    survivors = [e for e in experiments if e.status in _SURVIVOR_STATUSES]
+    best_value: float | None = None
+    for experiment in survivors:
+        value = _latest_full_value(executions, experiment.experiment_id)
+        if value is None:
+            continue
+        if best_value is None or signed_improvement(best_value, value, direction) > 0:
+            best_value = value
+    if best_value is not None and base_value:
+        delta = (best_value - base_value) / abs(base_value)
+        best_text = f"{best_value:g}"
+        best_detail = f"{delta:+.1%} vs baseline {base_value:g}"
+    else:
+        best_text = f"{base_value:g}"
+        best_detail = "baseline (no surviving experiment yet)"
+
+    errs = sum(1 for e in experiments if e.status.value.startswith("failed_"))
+    discarded = sum(
+        1
+        for e in experiments
+        if e.status in (ExperimentStatus.REJECTED, ExperimentStatus.CANCELLED)
+    )
+    frontier = len(ranking.pareto_ids) if ranking is not None else 0
+    return [
+        ("best score", best_text, best_detail),
+        (
+            "experiments",
+            str(len(experiments)),
+            f"{len(survivors)} kept · {discarded} discarded · {errs} err",
+        ),
+        ("frontier", str(frontier), "Pareto candidates"),
+    ]
+
+
+def tree_nodes(
+    experiments: list[Experiment],
+    executions: list[ExperimentExecution],
+    ranking: RankingReport | None,
+) -> list[TreeNode]:
+    deltas: dict[str, float | None] = {}
+    if ranking is not None:
+        for row in [*ranking.candidates, *ranking.rejected]:
+            deltas[row.experiment_id] = row.primary_delta_pct
+    return [
+        TreeNode(
+            experiment_id=e.experiment_id,
+            title=e.title,
+            status=e.status.value,
+            value=_latest_full_value(executions, e.experiment_id),
+            delta_pct=deltas.get(e.experiment_id),
+            parent_id=e.parent_experiment_id,
+        )
+        for e in experiments
+    ]
