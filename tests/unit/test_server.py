@@ -33,7 +33,7 @@ class TestPages:
     def test_research_empty_state_is_honest(self, client) -> None:  # type: ignore[no-untyped-def]
         response = client.get("/research")
         assert response.status_code == 200
-        assert "No papers stored yet" in response.text
+        assert "No research sessions yet" in response.text
         assert "No hypotheses imported yet" not in response.text  # fixture has hyp-001
 
     def test_experiments_live_table(self, client) -> None:  # type: ignore[no-untyped-def]
@@ -50,6 +50,106 @@ class TestPages:
         assert "Progress —" in response.text and "Funnel" in response.text
         assert "<nav>" in response.text
         assert "http-equiv='refresh'" in response.text
+
+
+class TestSessions:
+    def test_search_sessions_group_their_papers(
+        self, cli_runner: CliRunner, initialized_project: Path, patched_arxiv: None
+    ) -> None:
+        from contextlib import closing
+
+        from fastapi.testclient import TestClient
+
+        from researchforge.server.app import create_app
+        from researchforge.storage.db import open_project_db
+        from researchforge.storage.paper_repository import list_search_runs, papers_for_search_run
+
+        assert (
+            cli_runner.invoke(cli_app, ["research", "search", "-q", "all:routing"]).exit_code == 0
+        )
+
+        with closing(open_project_db()) as conn:
+            runs = list_search_runs(conn)
+            assert len(runs) == 1
+            linked = papers_for_search_run(conn, str(runs[0]["run_id"]))
+        assert linked  # the search recorded which papers it selected
+
+        response = TestClient(create_app()).get("/research")
+        assert response.status_code == 200
+        text = response.text
+        assert "Research sessions (1)" in text
+        assert "Search session #1" in text
+        assert "all:routing" in text  # the session's query shown
+        assert "<details class='session' open>" in text or "<details class='session'open>" in text
+        assert linked[0] in text  # a session paper rendered inside
+        assert "All stored papers" in text
+
+    def test_legacy_search_run_shows_fallback(
+        self, cli_runner: CliRunner, initialized_project: Path, patched_arxiv: None
+    ) -> None:
+        import sqlite3
+
+        from fastapi.testclient import TestClient
+
+        from researchforge.server.app import create_app
+
+        assert (
+            cli_runner.invoke(cli_app, ["research", "search", "-q", "all:routing"]).exit_code == 0
+        )
+        conn = sqlite3.connect(initialized_project / ".researchforge" / "researchforge.db")
+        conn.execute("DELETE FROM search_run_papers")  # simulate a pre-v6 recording
+        conn.commit()
+        conn.close()
+
+        response = TestClient(create_app()).get("/research")
+        assert "not attributed" in response.text
+        assert "earlier ResearchForge version" in response.text
+
+    def test_landscape_and_hypothesis_full_detail(
+        self, cli_runner: CliRunner, initialized_project: Path, patched_arxiv: None
+    ) -> None:
+        import shutil
+
+        from fastapi.testclient import TestClient
+
+        from researchforge.server.app import create_app
+
+        artifacts = Path(__file__).parent.parent / "fixtures" / "artifacts"
+        assert (
+            cli_runner.invoke(cli_app, ["research", "search", "-q", "all:routing"]).exit_code == 0
+        )
+        for fixture, command in (
+            ("landscape_valid.yaml", ["research", "landscape", "--import"]),
+            ("hypotheses_valid.yaml", ["hypotheses", "import"]),
+        ):
+            target = initialized_project / fixture
+            shutil.copy(artifacts / fixture, target)
+            assert cli_runner.invoke(cli_app, [*command, str(target)]).exit_code == 0
+
+        text = TestClient(create_app()).get("/research").text
+
+        # Directions render every recorded facet, including the untouched zones.
+        assert "Underexplored aspects" in text
+        assert "Joint cost and latency constraints appear underexplored" in text
+        assert "Established findings" in text
+        assert "Contradictions" in text
+        assert "Evidence claims" in text
+        # Hypotheses render the full record.
+        assert "Rationale:" in text
+        assert "Proposed experiment:" in text
+        assert "feasibility: high" in text
+        assert "Supporting papers" in text
+
+    def test_experiment_runs_are_collapsible_sessions(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/experiments")
+        text = response.text
+        assert text.count("<details class='session'") >= 1
+        assert "<details class='session' open>" in text  # latest run expanded
+        assert "full history" in text
+
+    def test_overview_counts_sessions(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/")
+        assert "research sessions" in response.text
 
 
 class TestRunHistory:

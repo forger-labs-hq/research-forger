@@ -6,6 +6,7 @@ from html import escape
 
 from researchforge import __version__
 from researchforge.domain.experiment import BenchmarkStage
+from researchforge.domain.paper import Paper
 from researchforge.reporting.dashboard import DASHBOARD_CSS
 from researchforge.reporting.svg_charts import status_color
 from researchforge.server.data import ProjectState
@@ -28,6 +29,13 @@ nav a.active { color: var(--fg); }
 .next { background: var(--card); border-left: 3px solid var(--chart-info);
   padding: 10px 14px; border-radius: 0 6px 6px 0; font-family: ui-monospace, monospace;
   font-size: 0.9rem; overflow-wrap: anywhere; }
+details.session { background: var(--card); border-radius: 8px; margin: 10px 0;
+  padding: 0 14px; }
+details.session > summary { cursor: pointer; padding: 12px 0; font-weight: 600;
+  list-style-position: outside; }
+details.session > summary .sub { font-weight: 400; }
+details.session[open] { padding-bottom: 12px; }
+details.session table { background: var(--bg); border-radius: 6px; }
 """
 )
 
@@ -70,6 +78,7 @@ def overview_page(state: ProjectState) -> str:
     cards = [
         _card("project", escape(project.name), escape(project.mode.value if project.mode else "")),
         _card("status", escape(project.status.value)),
+        _card("research sessions", str(len(state.search_runs))),
         _card("papers", str(len(state.papers))),
         _card(
             "directions",
@@ -113,55 +122,186 @@ def overview_page(state: ProjectState) -> str:
     return page_shell(f"ResearchForge — {project.name}", "/", "".join(body), refresh_seconds(state))
 
 
+def _papers_table(papers: list[Paper]) -> str:
+    rows = "".join(
+        f"<tr><td>{paper.relevance_score:.3f}</td><td>{escape(paper.paper_id)}</td>"
+        f"<td>{escape(paper.title)}</td></tr>"
+        for paper in papers
+    )
+    return (
+        "<table><thead><tr><th>score</th><th>id</th><th>title</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
+    )
+
+
+def _search_session_details(state: ProjectState) -> list[str]:
+    papers_by_id = {paper.paper_id: paper for paper in state.papers}
+    sections = []
+    for index, run in enumerate(reversed(state.search_runs)):
+        run_id = str(run["run_id"])
+        number = len(state.search_runs) - index
+        queries = run.get("queries") or []
+        assert isinstance(queries, list)
+        created = str(run.get("created_at", ""))[:16].replace("T", " ")
+        opened = " open" if index == 0 else ""
+        summary = (
+            f"Search session #{number} <span class='sub'>· {escape(created)} · "
+            f"{len(queries)} quer{'y' if len(queries) == 1 else 'ies'} · "
+            f"{run.get('selected_count', 0)} selected</span>"
+        )
+        inner = [
+            "<p class='sub'>"
+            + escape(
+                f"fetched {run.get('fetched_count', 0)} → deduplicated "
+                f"{run.get('deduped_count', 0)} → selected {run.get('selected_count', 0)}"
+            )
+            + "</p>",
+            "<ul>" + "".join(f"<li><code>{escape(str(q))}</code></li>" for q in queries) + "</ul>",
+        ]
+        linked = [
+            papers_by_id[pid]
+            for pid in state.search_run_papers.get(run_id, [])
+            if pid in papers_by_id
+        ]
+        if linked:
+            inner.append(_papers_table(sorted(linked, key=lambda p: -p.relevance_score)))
+        else:
+            inner.append(
+                "<p class='empty'>Papers for this session are not attributed — it was "
+                "recorded by an earlier ResearchForge version.</p>"
+            )
+        sections.append(
+            f"<details class='session'{opened}><summary>{summary}</summary>"
+            f"{''.join(inner)}</details>"
+        )
+    return sections
+
+
 def research_page(state: ProjectState) -> str:
     body = ["<h1>Research</h1>"]
-    if not state.papers:
+    if not state.search_runs and not state.papers:
         body.append(
-            "<p class='empty'>No papers stored yet — `researchforge research search` starts "
-            "the literature pipeline.</p>"
+            guidance_card(
+                state,
+                "No research sessions yet — `researchforge research search` starts the "
+                "literature pipeline.",
+            )
         )
-    else:
-        rows = "".join(
-            f"<tr><td>{paper.relevance_score:.3f}</td><td>{escape(paper.paper_id)}</td>"
-            f"<td>{escape(paper.title)}</td></tr>"
-            for paper in state.papers
-        )
+    if state.search_runs:
+        body.append(f"<h2>Research sessions ({len(state.search_runs)})</h2>")
+        body.extend(_search_session_details(state))
+    if state.papers:
         body.append(
-            f"<h2>Papers ({len(state.papers)})</h2><table><thead><tr><th>score</th>"
-            f"<th>id</th><th>title</th></tr></thead><tbody>{rows}</tbody></table>"
+            f"<details class='session'><summary>All stored papers "
+            f"({len(state.papers)})</summary>{_papers_table(state.papers)}</details>"
         )
     if state.landscape is not None:
-        body.append(f"<h2>Landscape</h2><p>{escape(state.landscape.summary)}</p>")
-        for direction in state.landscape.directions:
-            direction_papers = set(direction.paper_ids)
-            claims = [c for c in state.landscape.evidence if c.paper_id in direction_papers]
-            body.append(
-                f"<h2>[{escape(direction.direction_id)}] {escape(direction.name)}</h2>"
-                f"<p>{escape(direction.description)}</p>"
-                f"<p class='sub'>{len(direction.paper_ids)} paper(s), "
-                f"{len(claims)} evidence claim(s)</p>"
-            )
+        body.append(_landscape_details(state))
     else:
         body.append("<p class='empty'>No research landscape imported yet.</p>")
     if state.hypotheses:
-        cards = []
-        for hypothesis in state.hypotheses:
-            cards.append(
-                f"<div class='card'><div class='k'>{escape(hypothesis.hypothesis_id)} "
-                f"[{escape(hypothesis.status.value)}]</div>"
-                f"<div class='v'>{escape(hypothesis.title)}</div>"
-                f"<div class='d'>{escape(hypothesis.claim)}<br>"
-                f"evidence: {escape(hypothesis.evidence_status)}; supports: "
-                f"{len(hypothesis.supporting_paper_ids)} paper(s)</div></div>"
-            )
         body.append(
-            f"<h2>Hypotheses ({len(state.hypotheses)})</h2>"
-            f"<div class='cards'>{''.join(cards)}</div>"
+            f"<details class='session' open><summary>Hypotheses ({len(state.hypotheses)})"
+            f"</summary>{''.join(_hypothesis_details(h) for h in state.hypotheses)}</details>"
         )
     else:
         body.append("<p class='empty'>No hypotheses imported yet.</p>")
     return page_shell(
         "ResearchForge — research", "/research", "".join(body), refresh_seconds(state)
+    )
+
+
+def _bullets(heading: str, items: list[str]) -> str:
+    """A titled bullet list, or nothing when the artifact recorded none."""
+    if not items:
+        return ""
+    rendered = "".join(f"<li>{escape(item)}</li>" for item in items)
+    return f"<p class='sub' style='margin:8px 0 2px'>{escape(heading)}</p><ul>{rendered}</ul>"
+
+
+def _landscape_details(state: ProjectState) -> str:
+    assert state.landscape is not None
+    landscape = state.landscape
+    sections = [f"<p>{escape(landscape.summary)}</p>"]
+    for direction in landscape.directions:
+        direction_papers = set(direction.paper_ids)
+        claims = [c for c in landscape.evidence if c.paper_id in direction_papers]
+        claim_items = [
+            f"{c.claim} ({c.evidence_type.value}, {c.extraction_confidence.value} confidence)"
+            for c in claims
+        ]
+        sections.append(
+            f"<details class='session'><summary>[{escape(direction.direction_id)}] "
+            f"{escape(direction.name)} <span class='sub'>· {len(direction.paper_ids)} paper(s) "
+            f"· {len(claims)} claim(s)</span></summary>"
+            f"<p>{escape(direction.description)}</p>"
+            + _bullets("Established findings", direction.established_findings)
+            + _bullets("Contradictions", direction.contradictions)
+            + _bullets("Limitations", direction.limitations)
+            + _bullets("Underexplored aspects", direction.underexplored_aspects)
+            + _bullets("Evidence claims", claim_items)
+            + _bullets("Papers", direction.paper_ids)
+            + "</details>"
+        )
+    if landscape.paper_annotations:
+        annotations = []
+        for note in landscape.paper_annotations:
+            annotations.append(
+                f"<details class='session'><summary>{escape(note.paper_id)} "
+                f"<span class='sub'>· evidence: {escape(note.evidence_strength.value)}"
+                f"</span></summary><p>{escape(note.method_summary)}</p>"
+                + _bullets("Reported findings", note.reported_findings)
+                + _bullets("Limitations", note.limitations)
+                + (
+                    f"<p class='sub'>Repository relevance: {escape(note.repository_relevance)}</p>"
+                    if note.repository_relevance
+                    else ""
+                )
+                + "</details>"
+            )
+        sections.append(
+            f"<details class='session'><summary>Deep paper synthesis "
+            f"({len(landscape.paper_annotations)})</summary>{''.join(annotations)}</details>"
+        )
+    return (
+        f"<details class='session' open><summary>Landscape "
+        f"<span class='sub'>· {len(landscape.directions)} direction(s)</span></summary>"
+        f"{''.join(sections)}</details>"
+    )
+
+
+def _hypothesis_details(hypothesis: object) -> str:
+    from researchforge.domain.hypothesis import Hypothesis
+
+    assert isinstance(hypothesis, Hypothesis)
+    impact = hypothesis.expected_impact
+    impact_text = (
+        f"{impact.metric} ({impact.direction})" if impact.metric else str(impact.direction)
+    )
+    facts = (
+        f"evidence: {hypothesis.evidence_status} · feasibility: "
+        f"{hypothesis.feasibility.value} · effort: {hypothesis.estimated_effort.value} · "
+        f"novelty confidence: {hypothesis.novelty_confidence.value} · expected impact: "
+        f"{impact_text}"
+        + (
+            f" · ~{hypothesis.estimated_experiment_count} experiment(s)"
+            if hypothesis.estimated_experiment_count
+            else ""
+        )
+    )
+    return (
+        f"<details class='session'><summary>{escape(hypothesis.hypothesis_id)} "
+        f"{escape(hypothesis.title)} <span class='sub'>· {escape(hypothesis.status.value)}"
+        f"</span></summary>"
+        f"<p><strong>Claim:</strong> {escape(hypothesis.claim)}</p>"
+        f"<p><strong>Rationale:</strong> {escape(hypothesis.rationale)}</p>"
+        f"<p><strong>Proposed experiment:</strong> {escape(hypothesis.proposed_experiment)}</p>"
+        f"<p class='sub'>{escape(facts)}</p>"
+        + _bullets("Supporting papers", hypothesis.supporting_paper_ids)
+        + _bullets("Contradicting papers", hypothesis.contradicting_paper_ids)
+        + _bullets("Repository observations", hypothesis.repository_observations)
+        + _bullets("Limitations", hypothesis.limitations)
+        + "</details>"
     )
 
 
@@ -261,14 +401,10 @@ def experiments_page(state: ProjectState) -> str:
         if state.baseline is not None and state.baseline.metrics is not None
         else None
     )
-    for run in reversed(state.runs):
+    for index, run in enumerate(reversed(state.runs)):
         live = run.status.value == "in_progress"
         marker = "<span class='live'>● live</span> " if live else ""
-        body.append(
-            f"<h2>{marker}<a href='/runs/{escape(run.run_id)}'>{escape(run.run_id)}</a> — "
-            f"{escape(run.status.value)} ({escape(run.execution_mode.value)} mode) "
-            f"<span class='sub'>· <a href='/runs/{escape(run.run_id)}'>full history</a></span></h2>"
-        )
+        opened = " open" if index == 0 or live else ""
         run_executions = [e for e in state.executions if e.run_id == run.run_id]
         plan_experiments = [e for e in state.experiments if e.plan_id == run.plan_id]
         rows = []
@@ -295,10 +431,18 @@ def experiments_page(state: ProjectState) -> str:
                 f"<td>{escape(', '.join(dict.fromkeys(stages)) or 'queued')}</td>"
                 f"<td>{value_text}</td><td>{escape(reason)}</td></tr>"
             )
-        body.append(
+        summary = (
+            f"{marker}{escape(run.run_id)} <span class='sub'>· {escape(run.status.value)} · "
+            f"{escape(run.execution_mode.value)} mode · {len(plan_experiments)} experiment(s) · "
+            f"<a href='/runs/{escape(run.run_id)}'>full history</a></span>"
+        )
+        table = (
             "<table><thead><tr><th>id</th><th>title</th><th>status</th><th>stages run</th>"
             "<th>latest value vs baseline</th><th>decision</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table>"
+        )
+        body.append(
+            f"<details class='session'{opened}><summary>{summary}</summary>{table}</details>"
         )
     return page_shell(
         "ResearchForge — experiments", "/experiments", "".join(body), refresh_seconds(state)

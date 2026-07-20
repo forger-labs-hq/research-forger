@@ -100,6 +100,7 @@ def run_search(
         fetched_count=len(fetched),
         deduped_count=len(deduped),
         selected_count=len(selected),
+        paper_ids=[paper.paper_id for paper in selected],
     )
     touch_project_status(conn, ProjectStatus.RESEARCHING)
 
