@@ -5,7 +5,7 @@ from __future__ import annotations
 from html import escape
 
 from researchforge import __version__
-from researchforge.domain.experiment import BenchmarkStage
+from researchforge.domain.experiment import BenchmarkStage, ExperimentExecution
 from researchforge.domain.paper import Paper
 from researchforge.reporting.dashboard import DASHBOARD_CSS
 from researchforge.reporting.svg_charts import status_color
@@ -44,8 +44,64 @@ def _badge(status: str) -> str:
     return f"<span class='badge' style='background:{status_color(status)}'>{escape(status)}</span>"
 
 
+def _stage_reached(executions: list[ExperimentExecution], experiment_id: str) -> str:
+    order = [BenchmarkStage.SCREENING, BenchmarkStage.FULL, BenchmarkStage.VALIDATION]
+    reached = [e.benchmark_stage for e in executions if e.experiment_id == experiment_id]
+    if not reached:
+        return "never ran"
+    return str(max(reached, key=order.index).value)
+
+
 def refresh_seconds(state: ProjectState) -> int:
-    return 3 if state.run_in_progress else 10
+    return 3 if state.run_in_progress else 30
+
+
+# Keeps the reader's place across auto-refreshes: which <details> are open
+# (by their stable ids) and the scroll position, per page, in sessionStorage.
+# Inline and self-contained — the *live monitor* only; the static
+# dashboard.html file stays script-free.
+STATE_KEEPER_SCRIPT = """
+<script>
+(function () {
+  var key = 'rf-open:' + location.pathname;
+  var scrollKey = 'rf-scroll:' + location.pathname;
+  var restoring = true;  // events fired by a restore must not save
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  function restore() {
+    restoring = true;
+    try {
+      var saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+      if (saved) {
+        document.querySelectorAll('details.session[id]').forEach(function (d) {
+          d.open = saved.indexOf(d.id) !== -1;
+        });
+      }
+      var y = sessionStorage.getItem(scrollKey);
+      if (y !== null) window.scrollTo(0, parseInt(y, 10));
+    } catch (e) {}
+    setTimeout(function () { restoring = false; }, 50);
+  }
+  function save() {
+    if (restoring) return;
+    try {
+      var open = [];
+      document.querySelectorAll('details.session[id][open]').forEach(function (d) {
+        open.push(d.id);
+      });
+      sessionStorage.setItem(key, JSON.stringify(open));
+      sessionStorage.setItem(scrollKey, String(window.scrollY));
+    } catch (e) {}
+  }
+  restore();
+  // The browser applies its own details/scroll restoration after load —
+  // re-apply ours afterwards so the recorded state wins.
+  addEventListener('pageshow', function () { setTimeout(restore, 0); });
+  document.addEventListener('toggle', save, true);
+  addEventListener('scroll', save, { passive: true });
+  addEventListener('beforeunload', save);
+})();
+</script>
+"""
 
 
 def page_shell(title: str, active: str, body: str, refresh: int | None) -> str:
@@ -59,7 +115,8 @@ def page_shell(title: str, active: str, body: str, refresh: int | None) -> str:
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{escape(title)}</title>{meta_refresh}<style>{_PAGE_CSS}</style></head>"
         f"<body><nav>{nav}<span style='margin-left:auto' class='sub'>ResearchForge "
-        f"{__version__} — read-only monitor</span></nav>{body}</body></html>"
+        f"{__version__} — read-only monitor</span></nav>{body}{STATE_KEEPER_SCRIPT}"
+        "</body></html>"
     )
 
 
@@ -170,9 +227,10 @@ def _search_session_details(state: ProjectState) -> list[str]:
                 "<p class='empty'>Papers for this session are not attributed — it was "
                 "recorded by an earlier ResearchForge version.</p>"
             )
+        inner.append(f"<p class='sub'><a href='/sessions/{escape(run_id)}'>open session →</a></p>")
         sections.append(
-            f"<details class='session'{opened}><summary>{summary}</summary>"
-            f"{''.join(inner)}</details>"
+            f"<details class='session' id='session-{escape(run_id)}'{opened}>"
+            f"<summary>{summary}</summary>{''.join(inner)}</details>"
         )
     return sections
 
@@ -192,7 +250,7 @@ def research_page(state: ProjectState) -> str:
         body.extend(_search_session_details(state))
     if state.papers:
         body.append(
-            f"<details class='session'><summary>All stored papers "
+            f"<details class='session' id='all-papers'><summary>All stored papers "
             f"({len(state.papers)})</summary>{_papers_table(state.papers)}</details>"
         )
     if state.landscape is not None:
@@ -201,7 +259,8 @@ def research_page(state: ProjectState) -> str:
         body.append("<p class='empty'>No research landscape imported yet.</p>")
     if state.hypotheses:
         body.append(
-            f"<details class='session' open><summary>Hypotheses ({len(state.hypotheses)})"
+            f"<details class='session' open id='hypotheses'>"
+            f"<summary>Hypotheses ({len(state.hypotheses)})"
             f"</summary>{''.join(_hypothesis_details(h) for h in state.hypotheses)}</details>"
         )
     else:
@@ -219,35 +278,44 @@ def _bullets(heading: str, items: list[str]) -> str:
     return f"<p class='sub' style='margin:8px 0 2px'>{escape(heading)}</p><ul>{rendered}</ul>"
 
 
+def _direction_details(direction: object, landscape: object) -> str:
+    from researchforge.domain.landscape import ResearchDirection, ResearchLandscape
+
+    assert isinstance(direction, ResearchDirection) and isinstance(landscape, ResearchLandscape)
+    direction_papers = set(direction.paper_ids)
+    claims = [c for c in landscape.evidence if c.paper_id in direction_papers]
+    claim_items = [
+        f"{c.claim} ({c.evidence_type.value}, {c.extraction_confidence.value} confidence)"
+        for c in claims
+    ]
+    return (
+        f"<details class='session' id='{escape(direction.direction_id)}'>"
+        f"<summary>[{escape(direction.direction_id)}] "
+        f"{escape(direction.name)} <span class='sub'>· {len(direction.paper_ids)} paper(s) "
+        f"· {len(claims)} claim(s)</span></summary>"
+        f"<p>{escape(direction.description)}</p>"
+        + _bullets("Established findings", direction.established_findings)
+        + _bullets("Contradictions", direction.contradictions)
+        + _bullets("Limitations", direction.limitations)
+        + _bullets("Underexplored aspects", direction.underexplored_aspects)
+        + _bullets("Evidence claims", claim_items)
+        + _bullets("Papers", direction.paper_ids)
+        + "</details>"
+    )
+
+
 def _landscape_details(state: ProjectState) -> str:
     assert state.landscape is not None
     landscape = state.landscape
     sections = [f"<p>{escape(landscape.summary)}</p>"]
     for direction in landscape.directions:
-        direction_papers = set(direction.paper_ids)
-        claims = [c for c in landscape.evidence if c.paper_id in direction_papers]
-        claim_items = [
-            f"{c.claim} ({c.evidence_type.value}, {c.extraction_confidence.value} confidence)"
-            for c in claims
-        ]
-        sections.append(
-            f"<details class='session'><summary>[{escape(direction.direction_id)}] "
-            f"{escape(direction.name)} <span class='sub'>· {len(direction.paper_ids)} paper(s) "
-            f"· {len(claims)} claim(s)</span></summary>"
-            f"<p>{escape(direction.description)}</p>"
-            + _bullets("Established findings", direction.established_findings)
-            + _bullets("Contradictions", direction.contradictions)
-            + _bullets("Limitations", direction.limitations)
-            + _bullets("Underexplored aspects", direction.underexplored_aspects)
-            + _bullets("Evidence claims", claim_items)
-            + _bullets("Papers", direction.paper_ids)
-            + "</details>"
-        )
+        sections.append(_direction_details(direction, landscape))
     if landscape.paper_annotations:
         annotations = []
         for note in landscape.paper_annotations:
             annotations.append(
-                f"<details class='session'><summary>{escape(note.paper_id)} "
+                f"<details class='session' id='ann-{escape(note.paper_id)}'>"
+                f"<summary>{escape(note.paper_id)} "
                 f"<span class='sub'>· evidence: {escape(note.evidence_strength.value)}"
                 f"</span></summary><p>{escape(note.method_summary)}</p>"
                 + _bullets("Reported findings", note.reported_findings)
@@ -260,11 +328,11 @@ def _landscape_details(state: ProjectState) -> str:
                 + "</details>"
             )
         sections.append(
-            f"<details class='session'><summary>Deep paper synthesis "
+            f"<details class='session' id='annotations'><summary>Deep paper synthesis "
             f"({len(landscape.paper_annotations)})</summary>{''.join(annotations)}</details>"
         )
     return (
-        f"<details class='session' open><summary>Landscape "
+        f"<details class='session' open id='landscape'><summary>Landscape "
         f"<span class='sub'>· {len(landscape.directions)} direction(s)</span></summary>"
         f"{''.join(sections)}</details>"
     )
@@ -290,7 +358,8 @@ def _hypothesis_details(hypothesis: object) -> str:
         )
     )
     return (
-        f"<details class='session'><summary>{escape(hypothesis.hypothesis_id)} "
+        f"<details class='session' id='{escape(hypothesis.hypothesis_id)}'>"
+        f"<summary>{escape(hypothesis.hypothesis_id)} "
         f"{escape(hypothesis.title)} <span class='sub'>· {escape(hypothesis.status.value)}"
         f"</span></summary>"
         f"<p><strong>Claim:</strong> {escape(hypothesis.claim)}</p>"
@@ -442,8 +511,95 @@ def experiments_page(state: ProjectState) -> str:
             f"<tbody>{''.join(rows)}</tbody></table>"
         )
         body.append(
-            f"<details class='session'{opened}><summary>{summary}</summary>{table}</details>"
+            f"<details class='session' id='{escape(run.run_id)}'{opened}>"
+            f"<summary>{summary}</summary>{table}</details>"
         )
     return page_shell(
         "ResearchForge — experiments", "/experiments", "".join(body), refresh_seconds(state)
+    )
+
+
+def session_page(state: ProjectState, run_id: str) -> str:
+    """One research session and everything honestly connected to it.
+
+    The landscape/hypotheses are synthesized from all stored papers, so the
+    sections below are labeled by the computable relationship: directions
+    and hypotheses *citing* this session's papers, and the experiments that
+    tested those hypotheses.
+    """
+    run = next((r for r in state.search_runs if str(r["run_id"]) == run_id), None)
+    assert run is not None  # the route 404s before calling us
+    number = next(
+        index + 1 for index, r in enumerate(state.search_runs) if str(r["run_id"]) == run_id
+    )
+    queries = run.get("queries") or []
+    assert isinstance(queries, list)
+    created = str(run.get("created_at", ""))[:16].replace("T", " ")
+    papers_by_id = {paper.paper_id: paper for paper in state.papers}
+    session_paper_ids = set(state.search_run_papers.get(run_id, []))
+    session_papers = [papers_by_id[pid] for pid in session_paper_ids if pid in papers_by_id]
+
+    body = [
+        f"<h1>Search session #{number}</h1>",
+        f"<p class='sub'>{escape(created)} · "
+        + escape(
+            f"fetched {run.get('fetched_count', 0)} → deduplicated "
+            f"{run.get('deduped_count', 0)} → selected {run.get('selected_count', 0)}"
+        )
+        + " · <a href='/research'>all research</a></p>",
+        "<ul>" + "".join(f"<li><code>{escape(str(q))}</code></li>" for q in queries) + "</ul>",
+        f"<h2>Papers this session selected ({len(session_papers)})</h2>",
+    ]
+    if session_papers:
+        body.append(_papers_table(sorted(session_papers, key=lambda p: -p.relevance_score)))
+    else:
+        body.append(
+            "<p class='empty'>Papers for this session are not attributed — it was "
+            "recorded by an earlier ResearchForge version.</p>"
+        )
+
+    if state.landscape is not None and session_paper_ids:
+        citing = [d for d in state.landscape.directions if set(d.paper_ids) & session_paper_ids]
+        if citing:
+            body.append(f"<h2>Directions citing this session's papers ({len(citing)})</h2>")
+            body.extend(_direction_details(d, state.landscape) for d in citing)
+
+    citing_hypotheses = [
+        h
+        for h in state.hypotheses
+        if (set(h.supporting_paper_ids) | set(h.contradicting_paper_ids)) & session_paper_ids
+    ]
+    if citing_hypotheses:
+        body.append(f"<h2>Hypotheses citing this session's papers ({len(citing_hypotheses)})</h2>")
+        body.extend(_hypothesis_details(h) for h in citing_hypotheses)
+
+    hypothesis_ids = {h.hypothesis_id for h in citing_hypotheses}
+    followed = [e for e in state.experiments if e.hypothesis_id in hypothesis_ids]
+    if followed:
+        run_by_plan = {r.plan_id: r.run_id for r in state.runs}
+        rows = []
+        for experiment in followed:
+            exp_run = run_by_plan.get(experiment.plan_id)
+            links = (
+                f"<a href='/runs/{escape(exp_run)}'>history</a> · "
+                f"<a href='/dashboard?run={escape(exp_run)}'>charts</a>"
+                if exp_run
+                else "—"
+            )
+            rows.append(
+                f"<tr><td>{escape(experiment.experiment_id)}</td>"
+                f"<td>{escape(experiment.title)}</td>"
+                f"<td>{_badge(experiment.status.value)}</td>"
+                f"<td>{_stage_reached(state.executions, experiment.experiment_id)}</td>"
+                f"<td>{links}</td></tr>"
+            )
+        body.append(
+            f"<h2>Experiments that followed ({len(followed)})</h2>"
+            "<table><thead><tr><th>id</th><th>title</th><th>status</th>"
+            "<th>stage reached</th><th>links</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table>"
+        )
+
+    return page_shell(
+        f"ResearchForge — session #{number}", "/research", "".join(body), refresh_seconds(state)
     )
