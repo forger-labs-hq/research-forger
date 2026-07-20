@@ -165,10 +165,97 @@ def research_page(state: ProjectState) -> str:
     )
 
 
+def guidance_card(state: ProjectState, message: str) -> str:
+    """Honest empty-state: what exists is nothing, and here is the next step."""
+    return (
+        f"<div class='card'><div class='k'>nothing here yet</div>"
+        f"<div class='d'>{escape(message)}</div>"
+        f"<div class='next' style='margin-top:8px'>{escape(state.next_action)}</div></div>"
+    )
+
+
+def _duration(started: object, completed: object) -> str:
+    from datetime import datetime
+
+    if not isinstance(started, datetime) or not isinstance(completed, datetime):
+        return "—"
+    return f"{(completed - started).total_seconds():.0f}s"
+
+
+def run_page(state: ProjectState, run_id: str) -> str:
+    """Full history of one run: every stage attempt in chronological order."""
+    run = next((r for r in state.runs if r.run_id == run_id), None)
+    assert run is not None  # the route 404s before calling us
+    executions = sorted(
+        (e for e in state.executions if e.run_id == run_id), key=lambda e: e.started_at
+    )
+    titles = {e.experiment_id: e.title for e in state.experiments}
+    live = run.status.value == "in_progress"
+    header = "<span class='live'>● live</span> " if live else ""
+    body = [
+        f"<h1>{header}{escape(run_id)}</h1>",
+        f"<p class='sub'>{escape(run.status.value)} · {escape(run.execution_mode.value)} mode · "
+        f"started {escape(run.started_at.isoformat(timespec='seconds'))}"
+        + (
+            f" · finished {escape(run.completed_at.isoformat(timespec='seconds'))}"
+            if run.completed_at
+            else ""
+        )
+        + " · <a href='/experiments'>all runs</a></p>",
+    ]
+    for warning in run.warnings:
+        body.append(f"<div class='caveat'>{escape(warning)}</div>")
+    if not executions:
+        body.append(guidance_card(state, "This run has no recorded stage attempts yet."))
+    else:
+        rows = []
+        for execution in executions:
+            value = (
+                f"{execution.metrics.primary_metric.value:g}"
+                if execution.metrics is not None
+                else "—"
+            )
+            constraints = "—"
+            if execution.constraints:
+                failed = [c.name for c in execution.constraints if c.passed is False]
+                constraints = f"violated: {', '.join(failed)}" if failed else "all passed"
+            rows.append(
+                "<tr>"
+                f"<td>{escape(execution.benchmark_stage.value)}</td>"
+                f"<td>{execution.attempt}</td>"
+                f"<td>{escape(execution.experiment_id)}<br><span class='sub'>"
+                f"{escape(titles.get(execution.experiment_id, ''))}</span></td>"
+                f"<td>{_badge(execution.status.value)}</td>"
+                f"<td>{value}</td>"
+                f"<td>{escape(constraints)}</td>"
+                f"<td>{_duration(execution.started_at, execution.completed_at)}</td>"
+                f"<td>{escape(execution.failure_reason or '')}</td>"
+                "</tr>"
+            )
+        body.append(
+            "<h2>Execution timeline</h2>"
+            "<table><thead><tr><th>stage</th><th>#</th><th>experiment</th><th>status</th>"
+            "<th>value</th><th>constraints</th><th>duration</th><th>failure</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table>"
+        )
+    body.append(
+        f"<p class='sub'><a href='/dashboard?run={escape(run_id)}'>charts for this run →</a></p>"
+    )
+    return page_shell(
+        f"ResearchForge — {run_id}", "/experiments", "".join(body), refresh_seconds(state)
+    )
+
+
 def experiments_page(state: ProjectState) -> str:
     body = ["<h1>Experiments</h1>"]
     if not state.runs:
-        body.append("<p class='empty'>No experiment runs yet.</p>")
+        body.append(
+            guidance_card(
+                state,
+                "No experiment runs have been recorded for this project yet — the pages "
+                "below fill in as soon as the first run starts.",
+            )
+        )
     baseline_value = (
         state.baseline.metrics.primary_metric.value
         if state.baseline is not None and state.baseline.metrics is not None
@@ -178,8 +265,9 @@ def experiments_page(state: ProjectState) -> str:
         live = run.status.value == "in_progress"
         marker = "<span class='live'>● live</span> " if live else ""
         body.append(
-            f"<h2>{marker}{escape(run.run_id)} — {escape(run.status.value)} "
-            f"({escape(run.execution_mode.value)} mode)</h2>"
+            f"<h2>{marker}<a href='/runs/{escape(run.run_id)}'>{escape(run.run_id)}</a> — "
+            f"{escape(run.status.value)} ({escape(run.execution_mode.value)} mode) "
+            f"<span class='sub'>· <a href='/runs/{escape(run.run_id)}'>full history</a></span></h2>"
         )
         run_executions = [e for e in state.executions if e.run_id == run.run_id]
         plan_experiments = [e for e in state.experiments if e.plan_id == run.plan_id]
