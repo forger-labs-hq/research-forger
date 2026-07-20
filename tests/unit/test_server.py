@@ -52,6 +52,51 @@ class TestPages:
         assert "http-equiv='refresh'" in response.text
 
 
+class TestRunHistory:
+    def test_run_detail_timeline(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/runs/run-001")
+        assert response.status_code == 200
+        text = response.text
+        assert "Execution timeline" in text
+        # All funnel stages appear, including validation attempts.
+        for stage in ("screening", "full", "validation"):
+            assert stage in text
+        assert "exp-001" in text and "exp-002" in text
+        assert "0.85" in text  # winner's measured value
+        assert "violated: p95_latency_ms" in text  # the loser's constraint result
+        assert "charts for this run" in text
+
+    def test_unknown_run_404(self, client) -> None:  # type: ignore[no-untyped-def]
+        assert client.get("/runs/run-999").status_code == 404
+        assert client.get("/dashboard?run=run-999").status_code == 404
+
+    def test_dashboard_run_selection(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/dashboard?run=run-001")
+        assert response.status_code == 200
+        assert "run-001" in response.text
+
+    def test_experiments_page_links_to_history(self, client) -> None:  # type: ignore[no-untyped-def]
+        response = client.get("/experiments")
+        assert "/runs/run-001" in response.text
+
+    def test_empty_states_show_next_action(
+        self, cli_runner: CliRunner, funnel_project: Path, isolated_project_dir: Path
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        from researchforge.server.app import create_app
+
+        fresh = TestClient(create_app())
+        experiments = fresh.get("/experiments")
+        assert "nothing here yet" in experiments.text
+        assert "experiment plan" in experiments.text  # the actual next action
+
+        # Dashboard exists (contract+baseline) so it renders its own empty state.
+        dashboard = fresh.get("/dashboard")
+        assert dashboard.status_code == 200
+        assert "No experiment runs recorded yet" in dashboard.text
+
+
 class TestApi:
     def test_state_snapshot(self, client) -> None:  # type: ignore[no-untyped-def]
         payload = client.get("/api/state").json()
