@@ -12,8 +12,9 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -72,6 +73,7 @@ class ShipPreparation:
     hypothesis: Hypothesis
     run: ExperimentRunGroup
     validation_summary: ValidationSummary | None
+    ancestor_patches: list[str] = field(default_factory=list)  # root-first chain
 
 
 class ShipResult(BaseModel):
@@ -248,12 +250,22 @@ def prepare_ship(
             prep.contract.spec.objective.primary_metric.direction,
         )
 
+    ancestor_patches: list[str] = []
+    ancestor = experiment.parent_experiment_id
+    while ancestor is not None:
+        parent_experiment = get_experiment(conn, ancestor)
+        assert parent_experiment is not None  # import validated the chain
+        ancestor_patches.append(parent_experiment.patch_text)
+        ancestor = parent_experiment.parent_experiment_id
+    ancestor_patches.reverse()
+
     return ShipPreparation(
         prep=prep,
         experiment=experiment,
         hypothesis=hypothesis,
         run=run,
         validation_summary=validation_summary,
+        ancestor_patches=ancestor_patches,
     )
 
 
@@ -316,8 +328,17 @@ def reconstruct_branch(
     message_file = ship_artifacts / "commit_message.txt"
     message_file.write_text(message, encoding="utf-8")
 
+    # Branched winners ship their full ancestor chain, root first.
+    chain_files: list[Path] = []
+    for depth, ancestor_text in enumerate(ship.ancestor_patches):
+        chain_file = ship_artifacts / f"chain-{depth}.patch"
+        chain_file.write_text(ancestor_text, encoding="utf-8")
+        chain_files.append(chain_file)
+
     worktree = manager.create(worktree_name, ship.prep.plan.baseline_commit, recreate=True)
     try:
+        for chain_file in chain_files:
+            manager.apply_patch(worktree, chain_file)
         manager.apply_patch(worktree, patch_file)
         sha = manager.commit_all_in_worktree(worktree, message_file)
     finally:

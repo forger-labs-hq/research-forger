@@ -89,6 +89,8 @@ def import_command(
 def _print_experiment(experiment: Experiment) -> None:
     typer.echo(f"[{experiment.experiment_id}] {experiment.title}  ({experiment.status.value})")
     typer.echo(f"Plan:       {experiment.plan_id}   Hypothesis: {experiment.hypothesis_id}")
+    if experiment.parent_experiment_id:
+        typer.echo(f"Parent:     {experiment.parent_experiment_id} (branched experiment)")
     typer.echo(f"Change:     {experiment.change_summary}")
     typer.echo(f"Files:      {', '.join(experiment.changed_files) or '(none)'}")
     if experiment.decision is not None:
@@ -496,10 +498,13 @@ def results_show_command(
         f"  baseline    {primary}={_format_value(base.primary_value)}  "
         + "  ".join(f"{k}={_format_value(v)}" for k, v in base.secondary_values.items())
     )
+    parent_by_id = {e.experiment_id: e.parent_experiment_id for e in experiments}
     for row in report.candidates:
         marker = "*" if row.experiment_id in report.pareto_ids else " "
         delta = f"{row.primary_delta_pct:+.1f}%" if row.primary_delta_pct is not None else "—"
         secondaries = "  ".join(f"{k}={_format_value(v)}" for k, v in row.secondary_values.items())
+        if parent_by_id.get(row.experiment_id):
+            secondaries += f"  parent: {parent_by_id[row.experiment_id]}"
         typer.echo(
             f"{marker} {row.experiment_id}  [{row.confidence}]  "
             f"{primary}={_format_value(row.primary_value)} ({delta})  {secondaries}"
