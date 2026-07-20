@@ -35,8 +35,11 @@ PATCHES_DIR_NAME = "patches"
 AUTHORING_INSTRUCTIONS = [
     "Write each variant as ONE standalone unified diff against baseline_commit "
     "(git-diff style, a/ and b/ prefixes, text only — no binary hunks).",
-    "Variants are independent alternatives applied to the same baseline; never "
-    "stack one variant on top of another.",
+    "Variants without a parent are independent alternatives applied to the same "
+    "baseline. To BUILD ON another experiment, set `parent:` to a key in this "
+    "plan or to an exp-NNN from prior_experiments — the parent's patch chain is "
+    "applied first and your diff must be written against that combined state. "
+    "Never stack changes implicitly inside one diff.",
     "Change only files under editable_paths. Never touch protected_paths — the "
     "importer records such variants as rejected and they will not run.",
     "Author at most max_experiments experiments. Keep every variant compatible "
@@ -60,6 +63,14 @@ class PlannedExperimentEntry(BaseModel):
     patch_file: str = Field(min_length=1)
     expected_effect: ExpectedImpact | None = None
     notes: str | None = None
+    parent: str | None = Field(
+        default=None,
+        description=(
+            "Build on another experiment: a key from this plan or an exp-NNN from a "
+            "previous run. The parent's patch chain is applied first; this patch is "
+            "written against that state."
+        ),
+    )
 
 
 class ExperimentPlanArtifact(BaseModel):
@@ -102,11 +113,23 @@ class ExpectedPlanArtifacts(BaseModel):
     plan_schema: dict[str, object]
 
 
+class PriorExperiment(BaseModel):
+    """A previously imported experiment Claude may branch on with `parent:`."""
+
+    experiment_id: str
+    title: str
+    status: str
+    parent_experiment_id: str | None = None
+    primary_value: float | None = None
+    changed_files: list[str] = []
+
+
 class ExperimentContext(BaseModel):
     generated_at: datetime
     hypothesis: Hypothesis
     contract: ContractSummary
     baseline: BaselineSummary
+    prior_experiments: list[PriorExperiment] = []
     expected_artifacts: ExpectedPlanArtifacts
     instructions: list[str]
 
@@ -167,12 +190,40 @@ def build_experiment_context(
     except BaselineBlockedError as exc:
         raise ExperimentContextError(str(exc)) from None
 
+    from researchforge.storage.experiment_repository import list_executions, list_experiments
+
+    priors = []
+    measured_states = {"promising", "rejected", "validated", "implementation_ready"}
+    executions = list_executions(conn)
+    for experiment in list_experiments(conn):
+        if experiment.status.value not in measured_states:
+            continue
+        value = next(
+            (
+                e.metrics.primary_metric.value
+                for e in reversed(executions)
+                if e.experiment_id == experiment.experiment_id and e.metrics is not None
+            ),
+            None,
+        )
+        priors.append(
+            PriorExperiment(
+                experiment_id=experiment.experiment_id,
+                title=experiment.title,
+                status=experiment.status.value,
+                parent_experiment_id=experiment.parent_experiment_id,
+                primary_value=value,
+                changed_files=experiment.changed_files,
+            )
+        )
+
     staging = experiments_dir(base)
     return ExperimentContext(
         generated_at=datetime.now(UTC),
         hypothesis=hypothesis,
         contract=_contract_summary(contract),
         baseline=_baseline_summary(baseline),
+        prior_experiments=priors,
         expected_artifacts=ExpectedPlanArtifacts(
             plan_path=str(staging / PLAN_FILENAME),
             patches_dir=str(staging / PATCHES_DIR_NAME),

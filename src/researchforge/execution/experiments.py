@@ -57,6 +57,7 @@ from researchforge.execution.worktrees import WorktreeError, WorktreeManager
 from researchforge.storage.baseline_repository import insert_baseline_run
 from researchforge.storage.contract_repository import get_active_contract
 from researchforge.storage.experiment_repository import (
+    get_experiment,
     get_open_run_for_plan,
     get_plan,
     get_run,
@@ -433,11 +434,33 @@ def execute_stage(
     )
     insert_execution(conn, prep.project.id, execution)
 
+    # Ancestor chain (root first) for branched experiments: applied before
+    # the experiment's own patch so the child runs on the composed state.
+    ancestor_patches: list[Path] = []
+    ancestor: str | None = experiment.parent_experiment_id
+    ancestor_texts: list[str] = []
+    while ancestor is not None:
+        parent_experiment = get_experiment(conn, ancestor)
+        assert parent_experiment is not None  # import validated the chain
+        ancestor_texts.append(parent_experiment.patch_text)
+        ancestor = parent_experiment.parent_experiment_id
+    for depth, text in enumerate(reversed(ancestor_texts)):
+        chain_path = run_artifacts / f"chain-{depth}.patch"
+        chain_path.write_text(text, encoding="utf-8")
+        ancestor_patches.append(chain_path)
+
     manager = WorktreeManager(prep.repo_root)
     secrets = venv_exec.forwarded_values(spec.secrets.forward_environment_variables)
     try:
         worktree = manager.create(worktree_name, prep.plan.baseline_commit, recreate=True)
         try:
+            for depth, chain_path in enumerate(ancestor_patches):
+                try:
+                    manager.apply_patch(worktree, chain_path)
+                except WorktreeError as exc:
+                    raise WorktreeError(
+                        f"ancestor patch #{depth + 1} ({chain_path.name}) failed: {exc}"
+                    ) from exc
             manager.apply_patch(worktree, diff_path)
         except WorktreeError as exc:
             execution = execution.model_copy(

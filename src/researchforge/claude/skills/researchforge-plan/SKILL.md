@@ -36,7 +36,13 @@ Hard constraints the engine enforces (do not fight them):
 - changed files are extracted by git from the patch itself, never from your
   description;
 - keep variants small and single-idea: the funnel measures one change at a
-  time.
+  time;
+- to BUILD ON a prior result, set `parent:` on an entry (another key in this
+  plan or an `exp-NNN` from the context's `prior_experiments`) — the
+  parent's patch chain is applied first and your diff must be written
+  against that combined state. A branched child's improvement is still
+  measured against the baseline; report its increment over the parent
+  separately and honestly.
 
 ## 3. Import (engine validates, six layers)
 
