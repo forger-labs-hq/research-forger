@@ -31,17 +31,17 @@ def paths_command(json_output: JsonOption = False) -> None:
 
     settings = load_settings()
     locations: dict[str, str] = {
-        "repo_root": str(Path.cwd()),
-        "state_dir": str(researchforge_dir()),
-        "database": str(db_path()),
-        "contract": str(contract_path()),
-        "worktrees": str(worktrees_dir()),
-        "artifacts": str(artifacts_dir()),
-        "reports": str(reports_dir()),
-        "synthesis_staging": str(synthesis_dir()),
-        "experiments_staging": str(experiments_dir()),
+        "repo_root": str(Path.cwd().resolve()),
+        "state_dir": str(researchforge_dir().resolve()),
+        "database": str(db_path().resolve()),
+        "contract": str(contract_path().resolve()),
+        "worktrees": str(worktrees_dir().resolve()),
+        "artifacts": str(artifacts_dir().resolve()),
+        "reports": str(reports_dir().resolve()),
+        "synthesis_staging": str(synthesis_dir().resolve()),
+        "experiments_staging": str(experiments_dir().resolve()),
         "research_output": str(Path(settings.research_output_dir).resolve()),
-        "monitor_log": str(researchforge_dir() / "monitor.log"),
+        "monitor_log": str((researchforge_dir() / "monitor.log").resolve()),
     }
     if json_output:
         typer.echo(json.dumps(locations, indent=2))

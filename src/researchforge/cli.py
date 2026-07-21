@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 from uuid import uuid4
 
 import typer
@@ -40,6 +42,28 @@ app = typer.Typer(
     add_completion=False,
     help="From papers to proof.",
 )
+
+
+@app.callback()
+def _root(
+    directory: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir",
+            "-C",
+            help=(
+                "Run as if started in this directory — the project (its database, "
+                "worktrees, artifacts, dashboard) lives wherever you point this. "
+                "Example: researchforge -C ~/Desktop/some_new_folder init"
+            ),
+            exists=True,
+            file_okay=False,
+        ),
+    ] = None,
+) -> None:
+    if directory is not None:
+        os.chdir(directory)
+
 
 app.add_typer(project_app, name="project")
 app.add_typer(repo_app, name="repo")
