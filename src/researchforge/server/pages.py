@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 
 from researchforge import __version__
 from researchforge.domain.experiment import BenchmarkStage, ExperimentExecution
@@ -413,6 +414,14 @@ def run_page(state: ProjectState, run_id: str) -> str:
         )
         + " · <a href='/experiments'>all runs</a></p>",
     ]
+    from researchforge.config.paths import experiment_artifacts_dir, worktrees_dir
+
+    run_artifacts = experiment_artifacts_dir().resolve() / run_id
+    body.append(
+        "<p class='sub'>work locations · artifacts: "
+        f"<code>{escape(str(run_artifacts))}</code> · worktrees: "
+        f"<code>{escape(str(worktrees_dir().resolve()))}</code></p>"
+    )
     for warning in run.warnings:
         body.append(f"<div class='caveat'>{escape(warning)}</div>")
     if not executions:
@@ -520,6 +529,12 @@ def experiments_page(state: ProjectState) -> str:
     )
 
 
+def _synthesis_staging() -> Path:
+    from researchforge.config.paths import synthesis_dir
+
+    return synthesis_dir().resolve()
+
+
 def session_page(state: ProjectState, run_id: str) -> str:
     """One research session and everything honestly connected to it.
 
@@ -548,6 +563,9 @@ def session_page(state: ProjectState, run_id: str) -> str:
             f"{run.get('deduped_count', 0)} → selected {run.get('selected_count', 0)}"
         )
         + " · <a href='/research'>all research</a></p>",
+        "<p class='sub'>work locations · project: "
+        f"<code>{escape(str(Path.cwd().resolve()))}</code> · synthesis staging: "
+        f"<code>{escape(str(_synthesis_staging()))}</code></p>",
         "<ul>" + "".join(f"<li><code>{escape(str(q))}</code></li>" for q in queries) + "</ul>",
         f"<h2>Papers this session selected ({len(session_papers)})</h2>",
     ]
@@ -755,16 +773,17 @@ def locations_section(state: ProjectState) -> str:
     )
     from researchforge.config.settings import load_settings
 
-    repo = state.project.repository.path or "."
+    repo = state.project.repository.path or str(Path.cwd().resolve())
     entries = [
+        ("project root", str(Path.cwd().resolve())),
         ("repository", repo),
-        ("state", str(researchforge_dir())),
-        ("worktrees", str(worktrees_dir())),
-        ("artifacts", str(artifacts_dir())),
-        ("reports", str(reports_dir())),
-        ("synthesis staging", str(synthesis_dir())),
-        ("experiments staging", str(experiments_dir())),
-        ("research output", load_settings().research_output_dir),
+        ("state", str(researchforge_dir().resolve())),
+        ("worktrees", str(worktrees_dir().resolve())),
+        ("artifacts", str(artifacts_dir().resolve())),
+        ("reports", str(reports_dir().resolve())),
+        ("synthesis staging", str(synthesis_dir().resolve())),
+        ("experiments staging", str(experiments_dir().resolve())),
+        ("research output", str(Path(load_settings().research_output_dir).resolve())),
     ]
     items = "".join(
         f"<li>{escape(label)}: <code>{escape(value)}</code></li>" for label, value in entries

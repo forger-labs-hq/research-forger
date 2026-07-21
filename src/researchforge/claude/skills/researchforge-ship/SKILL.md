@@ -49,6 +49,19 @@ they just told you to push. If the contract flag is off, tell the user how
 to enable it (edit `researchforge.yaml`, re-approve the contract) — do not
 look for another way to push.
 
+**Open-source / third-party repositories — ask first.** Before shipping a
+PR, ask the user how they relate to the repository:
+
+- **They have push access** (their own repo, or a repo they maintain):
+  `ship pr` pushes a feature branch to it and opens the draft PR there.
+- **They do not have push access** (an open-source repo they cloned): the
+  engine detects this, offers to **fork into their GitHub account** (typed
+  `fork` confirmation — the user must type it), pushes the branch to the
+  fork, and opens a cross-repo draft PR against the upstream. Never fork
+  without that typed consent, and confirm which GitHub account `gh` is
+  authenticated as (`gh api user -q .login`) so the fork lands where the
+  user expects.
+
 Also mention: `researchforge paper package` (researchforge-paper skill)
 builds the research bundle from the same recorded data.
 

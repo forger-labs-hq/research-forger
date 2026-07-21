@@ -41,9 +41,10 @@ inside it.
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. Go to the repository you want to work on (clone it first if needed)
+# 2. Go to the directory you want to work in (a repository to improve, or
+#    ANY folder for pure research — clone/create it first if needed)
 #    and initialize ResearchForge inside it:
-cd path/to/your-repo
+cd path/to/your-project
 researchforge init --claude
 
 # 3. Start Claude Code IN that directory:
@@ -63,6 +64,12 @@ Claude walks the whole journey from there: it runs the CLI, shows you what
 it found, and **asks before anything is approved, executed, or shipped**.
 If you ever wonder where things stand, `researchforge status` names the
 exact next step.
+
+Everything is **directory-scoped**: the database, worktrees, artifacts, and
+dashboard live under the folder you initialized — which can be anywhere on
+disk, not just next to this repo. Point a command at another project with
+`researchforge -C /path/to/project <command>` (like `git -C`), and print
+the full location map with `researchforge paths`.
 
 > **Why don't I see `/researchforge-…` in a new session?** Project skills
 > load from the directory a session is opened in. Open the session in the

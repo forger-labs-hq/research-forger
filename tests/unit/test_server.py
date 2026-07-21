@@ -173,6 +173,8 @@ class TestSessions:
         assert response.status_code == 200
         text = response.text
         assert "Search session #1" in text
+        assert "work locations" in text
+        assert str(initialized_project.resolve()) in text
         assert "Papers this session selected" in text
         # The fixture landscape/hypotheses cite the searched papers.
         assert "Directions citing this session's papers" in text
@@ -381,6 +383,15 @@ class TestExperimentDrilldown:
         response = client.get("/")
         assert "Locations" in response.text
         assert "worktrees" in response.text
+        assert "project root" in response.text
+        # Paths shown are absolute, not confusing relative ones.
+        assert str(Path.cwd().resolve()) in response.text
+
+    def test_run_page_shows_work_locations(self, client) -> None:  # type: ignore[no-untyped-def]
+        text = client.get("/runs/run-001").text
+        assert "work locations" in text
+        expected = Path.cwd().resolve() / ".researchforge" / "artifacts" / "experiments" / "run-001"
+        assert str(expected) in text
 
 
 class TestPathsCli:
@@ -413,3 +424,33 @@ class TestPathsCli:
     def test_uninitialized_refused(self, cli_runner: CliRunner, isolated_project_dir: Path) -> None:
         result = cli_runner.invoke(cli_app, ["paths"])
         assert result.exit_code == 1
+
+    def test_paths_are_absolute(
+        self, cli_runner: CliRunner, funnel_project: Path, isolated_project_dir: Path
+    ) -> None:
+        result = cli_runner.invoke(cli_app, ["paths", "--json"])
+        payload = json.loads(result.output)
+        assert all(Path(value).is_absolute() for value in payload.values())
+
+
+class TestProjectDirOption:
+    def test_dir_option_targets_another_directory(
+        self, cli_runner: CliRunner, isolated_project_dir: Path
+    ) -> None:
+        """`researchforge -C <folder> init` creates the project in that folder."""
+        elsewhere = isolated_project_dir / "some_new_folder"
+        elsewhere.mkdir()
+        result = cli_runner.invoke(cli_app, ["-C", str(elsewhere), "init"])
+        assert result.exit_code == 0, result.output
+        assert (elsewhere / ".researchforge").is_dir()
+        assert not (isolated_project_dir / ".researchforge").exists()
+
+        paths = cli_runner.invoke(cli_app, ["--dir", str(elsewhere), "paths", "--json"])
+        assert paths.exit_code == 0, paths.output
+        assert json.loads(paths.output)["repo_root"] == str(elsewhere.resolve())
+
+    def test_dir_option_rejects_missing_directory(
+        self, cli_runner: CliRunner, isolated_project_dir: Path
+    ) -> None:
+        result = cli_runner.invoke(cli_app, ["-C", str(isolated_project_dir / "nope"), "status"])
+        assert result.exit_code != 0

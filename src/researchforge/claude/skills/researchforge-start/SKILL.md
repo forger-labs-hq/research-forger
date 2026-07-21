@@ -25,6 +25,13 @@ matching skill (researchforge-papers, researchforge-baseline, …).
 
 ## Start a new project
 
+0. Ask **where** the project should live. ResearchForge is directory-scoped:
+   the database, worktrees, artifacts, and dashboard all live under the
+   directory you run it in — any folder works, it does not have to be a
+   repository you already opened. If the user names a folder (e.g. "do all
+   experiments at ~/Desktop/some_new_folder"), either `cd` there or prefix
+   every command with `researchforge -C <folder> …`. Confirm the location
+   back to the user; `researchforge paths` prints the full map afterwards.
 1. Ask the user which journey they want:
    - **Explore a research idea** — literature search, landscape, hypotheses,
      citation-backed report. Mode: `explore_research_idea`.
