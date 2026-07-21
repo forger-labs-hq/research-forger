@@ -10,10 +10,14 @@ import typer
 from researchforge.config.paths import is_initialized
 from researchforge.server.monitor import (
     DEFAULT_PORT,
+    hub_record_path,
     monitor_path,
     pick_port,
+    read_hub,
     read_monitor,
+    spawn_background_hub,
     spawn_background_monitor,
+    stop_hub,
     stop_monitor,
 )
 
@@ -130,3 +134,88 @@ def serve_command(
             record = read_monitor()
             if record is not None and record.port == chosen:
                 monitor_path().unlink(missing_ok=True)
+
+
+def hub_command(
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            min=1,
+            max=65535,
+            help=f"Preferred port (default {DEFAULT_PORT}); falls back to a free one if busy.",
+        ),
+    ] = DEFAULT_PORT,
+    background: Annotated[
+        bool,
+        typer.Option("--background", help="Run detached; manage with --status / --stop."),
+    ] = False,
+    stop: Annotated[bool, typer.Option("--stop", help="Stop the background hub and exit.")] = False,
+    status: Annotated[
+        bool, typer.Option("--status", help="Show whether the hub is running.")
+    ] = False,
+    open_browser: Annotated[
+        bool, typer.Option("--open", help="Open the hub in the default browser.")
+    ] = False,
+    foreground: Annotated[
+        bool, typer.Option("--foreground", hidden=True, help="Internal: plain foreground run.")
+    ] = False,
+) -> None:
+    """Run the hub: every project on this machine, in one read-only dashboard."""
+    if stop:
+        stopped = stop_hub()
+        if stopped is None:
+            typer.echo("No hub running.")
+        else:
+            typer.echo(f"Stopped hub (pid {stopped.pid}, {stopped.url}).")
+        return
+
+    if status:
+        record = read_hub()
+        if record is None:
+            typer.echo("No hub running.")
+        else:
+            typer.echo(f"Hub running: {record.url} (pid {record.pid})")
+        return
+
+    _require_serve_deps()
+    host = "127.0.0.1"
+
+    if background:
+        existing = read_hub()
+        if existing is not None:
+            typer.echo(f"Hub already running: {existing.url} (pid {existing.pid})")
+            if open_browser:
+                webbrowser.open(existing.url)
+            return
+        chosen = pick_port(host, port)
+        if chosen != port:
+            typer.echo(f"Port {port} is busy — using {chosen} instead.")
+        record = spawn_background_hub(host, chosen)
+        typer.echo(
+            f"Hub running in the background at {record.url} (pid {record.pid}; "
+            "`researchforge hub --stop` to stop)"
+        )
+        if open_browser:
+            webbrowser.open(record.url)
+        return
+
+    import uvicorn
+
+    from researchforge.server.hub import create_hub_app
+
+    chosen = pick_port(host, port)
+    if chosen != port:
+        typer.echo(f"Port {port} is busy — using {chosen} instead.")
+    url = f"http://{host}:{chosen}/"
+    typer.echo(f"Hub at {url} (read-only; Ctrl-C to stop)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        uvicorn.run(create_hub_app(), host=host, port=chosen, log_level="warning")
+    finally:
+        if foreground:
+            # We may be the recorded background hub; clear the stale record.
+            record = read_hub()
+            if record is not None and record.port == chosen:
+                hub_record_path().unlink(missing_ok=True)

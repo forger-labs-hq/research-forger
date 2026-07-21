@@ -35,6 +35,15 @@ def is_initialized(base: Path | None = None) -> bool:
     return root.is_dir() and db_path(base).is_file()
 
 
+def find_project_root(start: Path | None = None) -> Path | None:
+    """The nearest initialized project at `start` or above (git-style walk-up)."""
+    current = (start if start is not None else Path.cwd()).resolve()
+    for candidate in (current, *current.parents):
+        if is_initialized(candidate):
+            return candidate
+    return None
+
+
 def config_path(base: Path | None = None) -> Path:
     """Path to the optional settings-override file inside `.researchforge/`."""
     return researchforge_dir(base) / CONFIG_FILENAME

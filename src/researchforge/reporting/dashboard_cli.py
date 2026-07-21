@@ -19,6 +19,15 @@ from researchforge.utils.output import JsonOption
 DASHBOARD_FILENAME = "dashboard.html"
 
 
+def _hub_hint() -> None:
+    """Point at the always-on hub — the live view most people want."""
+    from researchforge.server.monitor import read_hub
+
+    record = read_hub()
+    if record is not None:
+        typer.echo(f"Looking for the live view of all projects? The hub is at {record.url}")
+
+
 def dashboard_command(
     run_id: Annotated[
         str | None,
@@ -45,7 +54,11 @@ def dashboard_command(
     with closing(open_project_db()) as conn:
         project = get_project(conn)
         if project is None or project.objective is None:
-            typer.echo("Define the project first: `researchforge project create`.")
+            typer.echo(
+                "This builds a static chart snapshot for ONE project with recorded "
+                "data — define the project first: `researchforge project create`."
+            )
+            _hub_hint()
             raise typer.Exit(code=1)
         contract = get_active_contract(conn)
         baseline = get_latest_successful_baseline(conn)
@@ -54,6 +67,7 @@ def dashboard_command(
                 "The dashboard needs an approved contract and a successful baseline — "
                 "run `researchforge contract approve` and `researchforge baseline run` first."
             )
+            _hub_hint()
             raise typer.Exit(code=1)
 
         if run_id is not None:
