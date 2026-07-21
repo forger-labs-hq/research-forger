@@ -41,6 +41,10 @@ def open_readonly(base: Path | None = None) -> sqlite3.Connection:
 class ProjectState(BaseModel):
     """Everything the monitoring pages show, as one snapshot."""
 
+    # Presentation-only: URL prefix for every in-page link ("" when the
+    # monitor serves one project at the root; "/p/<slug>" under the hub).
+    link_prefix: str = Field(default="", exclude=True)
+
     project: Project
     next_action: str
     papers: list[Paper] = Field(default_factory=list)

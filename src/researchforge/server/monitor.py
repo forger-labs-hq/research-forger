@@ -124,3 +124,81 @@ def ensure_background_monitor(base: Path | None = None) -> MonitorRecord | None:
         return None
     host = "127.0.0.1"
     return spawn_background_monitor(host, pick_port(host, DEFAULT_PORT), base)
+
+
+# --- The hub: one machine-wide server listing every registered project. ---
+
+HUB_FILENAME = "hub.json"
+HUB_LOG_FILENAME = "hub.log"
+
+
+def hub_record_path() -> Path:
+    from researchforge.config.registry import researchforge_home
+
+    return researchforge_home() / HUB_FILENAME
+
+
+def read_hub() -> MonitorRecord | None:
+    """The recorded hub, or None when absent or its process is gone."""
+    path = hub_record_path()
+    if not path.is_file():
+        return None
+    try:
+        record = MonitorRecord.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+    if not _pid_alive(record.pid):
+        return None
+    return record
+
+
+def spawn_background_hub(host: str, port: int) -> MonitorRecord:
+    """Start a detached foreground `hub` and record it; caller checked deps."""
+    from researchforge.config.registry import researchforge_home
+
+    log_path = researchforge_home() / HUB_LOG_FILENAME
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(  # noqa: S603 — our own CLI, fixed argv
+            [sys.executable, "-m", "researchforge", "hub", "--port", str(port), "--foreground"],
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    record = MonitorRecord(
+        pid=process.pid,
+        url=f"http://{host}:{port}/",
+        host=host,
+        port=port,
+        started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
+    hub_record_path().write_text(record.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def stop_hub() -> MonitorRecord | None:
+    """Terminate the recorded hub; returns what was stopped (or None)."""
+    record = read_hub()
+    hub_record_path().unlink(missing_ok=True)
+    if record is None:
+        return None
+    try:
+        os.kill(record.pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return None
+    return record
+
+
+def ensure_hub() -> MonitorRecord | None:
+    """Reuse the live hub or spawn one; None when the serve extra is missing."""
+    existing = read_hub()
+    if existing is not None:
+        return existing
+    try:
+        import uvicorn  # noqa: F401
+
+        import researchforge.server.hub  # noqa: F401
+    except ImportError:
+        return None
+    host = "127.0.0.1"
+    return spawn_background_hub(host, pick_port(host, DEFAULT_PORT))

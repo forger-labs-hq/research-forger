@@ -32,6 +32,10 @@ matching skill (researchforge-papers, researchforge-baseline, …).
    experiments at ~/Desktop/some_new_folder"), either `cd` there or prefix
    every command with `researchforge -C <folder> …`. Confirm the location
    back to the user; `researchforge paths` prints the full map afterwards.
+   Commands run in a subfolder of a project walk up to the project root
+   automatically (a `Using project at <root>` note appears on stderr).
+   Tell the user their project appears in the hub at http://127.0.0.1:9000
+   (all projects on the machine, with folder locations).
 1. Ask the user which journey they want:
    - **Explore a research idea** — literature search, landscape, hypotheses,
      citation-backed report. Mode: `explore_research_idea`.

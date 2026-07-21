@@ -15,6 +15,14 @@ ARXIV_FIXTURES = Path(__file__).parent / "fixtures" / "arxiv"
 RepoFactory = Callable[..., Path]
 
 
+@pytest.fixture(autouse=True)
+def _isolated_researchforge_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the global registry/hub out of the real home dir and never
+    auto-spawn hub server processes from tests."""
+    monkeypatch.setenv("RESEARCHFORGE_HOME", str(tmp_path / "rf-home"))
+    monkeypatch.setenv("RESEARCHFORGE_NO_HUB", "1")
+
+
 @pytest.fixture
 def cli_runner() -> CliRunner:
     return CliRunner()

@@ -99,20 +99,43 @@ a chronological dot, kept improvements annotated, a running-best step
 line — plus per-experiment bars vs the baseline, the trade-off scatter with
 the hard-constraint line, the funnel with drop-offs, and validation spread.
 
+The static dashboard also opens with **summary stats** (best score and its
+delta vs baseline, experiments kept · discarded · errored, the Pareto
+frontier) and the **experiment tree** — a graph from the baseline through
+every branch of experiments (see "experiments on experiments" below).
+
 ```bash
 pip install "researchforge[serve]"
-researchforge serve --background     # always-on monitor at http://127.0.0.1:9000
+researchforge serve --background     # live monitor for THIS project (URL printed)
 ```
 
 A local web monitor that follows runs **as they happen**: overview with the
-next action, research state (papers, landscape directions, hypotheses), a
-per-run experiments table that refreshes every 3 seconds while a run is in
-progress, the live chart dashboard, and a JSON API (`/api/state`). Once the
-extra is installed, `experiment run`/`start` auto-start it and print the
-URL; if port 9000 is taken it picks a free one and tells you. Manage it
-with `researchforge serve --status` / `--stop`. The server opens the
-database **read-only** and binds 127.0.0.1 only by default — watching can
-never interfere with a run.
+next action, collapsible research sessions with the full recorded detail
+(directions, evidence, limitations, underexplored aspects), per-run
+execution timelines with work locations on disk, the experiment tree with
+**click-through drill-down pages** for every experiment (lineage, decision,
+executions, artifacts on disk), the live chart dashboard, and a JSON API
+(`/api/state`). Once the extra is installed, `experiment run`/`start`
+auto-start it and print the URL. Manage it with `researchforge serve
+--status` / `--stop`. The server opens the database **read-only** and binds
+127.0.0.1 only by default — watching can never interfere with a run.
+
+### The hub — every project, one dashboard
+
+```bash
+researchforge hub --background       # http://127.0.0.1:9000 — all projects
+```
+
+Projects live in whatever folders you initialize them in, and it is easy to
+forget which. The **hub** is one machine-wide page listing every project
+with its **folder location**, status, and live activity; click through to
+any project's full monitor (sessions, runs, experiment tree, drill-downs).
+Every `researchforge init` registers the project, so new projects appear
+automatically — and once the `serve` extra is installed, **any researchforge
+command quietly ensures the hub is running**, so `http://127.0.0.1:9000`
+is simply always there (set `RESEARCHFORGE_NO_HUB=1` to opt out). Commands
+run in a subfolder of a project also walk up to find it (like `git`) and
+print `Using project at <root>` so you always know which project you're in.
 
 ## Journey A — research an idea
 
@@ -162,6 +185,16 @@ researchforge experiment start .researchforge/experiments/plan.yaml
 # = import + ONE typed approval (shows worst-case wall time) + run
 ```
 
+**Experiments on experiments (branching):** a plan entry can declare
+`parent: exp-001` (or the key of another entry in the same plan) to build
+**on top of** a previous experiment instead of the baseline — refine a
+winner, or rescue a rejected idea by combining it with something else. The
+engine validates the whole chain at import (a child that doesn't apply on
+its parent's state is refused), executes it root-first in isolation, and
+still measures **honestly against the frozen baseline**. Ship a branched
+winner and the chain is composed into one clean commit. The dashboard
+draws the whole tree, like Karpathy's autoresearch UI.
+
 **3. Inspect and validate:**
 
 ```bash
@@ -205,11 +238,14 @@ of them are spam.
 |---|---|
 | start a batch (one command) | `researchforge experiment start plan.yaml` |
 | watch it live | `researchforge serve --background` (URL is printed) |
+| see ALL projects + their folders | `researchforge hub --background` → http://127.0.0.1:9000 |
 | stop a running batch | **Ctrl-C** — always safe (isolated worktrees) |
 | continue an interrupted run | `researchforge experiment resume run-001` |
 | discard an interrupted run | `researchforge experiment abandon run-001` |
 | run another batch | `researchforge experiment plan hyp-002` → start again |
+| build on a previous experiment | `parent: exp-001` in the next plan entry |
 | see what's next, always | `researchforge status` |
+| see where everything lives | `researchforge paths` |
 | reset the whole project | `rm -rf .researchforge researchforge.yaml` |
 
 Everything is local; nothing outside your repository is ever created. To

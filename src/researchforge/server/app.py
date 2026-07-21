@@ -22,17 +22,80 @@ from researchforge.server.pages import (
 )
 
 
-def create_app(base: Path | None = None) -> FastAPI:
+def render_dashboard_page(state: ProjectState, base: Path | None, run: str | None) -> str:
+    """The charts dashboard wrapped in the monitor nav (shared with the hub)."""
+    from researchforge.reporting.dashboard import build_dashboard
+    from researchforge.storage.baseline_repository import get_latest_successful_baseline
+    from researchforge.storage.contract_repository import get_active_contract
+    from researchforge.storage.experiment_repository import list_runs
+
+    prefix = state.link_prefix
+    with closing(open_readonly(base)) as conn:
+        if get_active_contract(conn) is None or get_latest_successful_baseline(conn) is None:
+            body = "<h1>Dashboard</h1>" + guidance_card(
+                state,
+                "The dashboard needs an approved contract and a successful baseline "
+                "before there is anything honest to chart.",
+            )
+            return page_shell(
+                "ResearchForge — dashboard",
+                "/dashboard",
+                body,
+                refresh_seconds(state),
+                prefix=prefix,
+            )
+        runs = list_runs(conn)
+        if run is not None:
+            selected = next((r for r in runs if r.run_id == run), None)
+            if selected is None:
+                raise HTTPException(status_code=404, detail=f"Unknown run: {run}")
+        else:
+            selected = runs[-1] if runs else None
+        html = build_dashboard(conn, selected, link_base=f"{prefix}/experiments")
+    # Inject the nav + auto-refresh into the standalone dashboard page.
+    from researchforge.server.pages import _NAV
+
+    nav = "".join(
+        f"<a href='{prefix}{href}'{' class=active' if href == '/dashboard' else ''}>{label}</a>"
+        for href, label in _NAV
+    )
+    if prefix:
+        nav = f"<a href='/'>⌂ all projects</a>{nav}"
+    nav_css = (
+        "<style>nav{display:flex;gap:16px;margin-bottom:20px;padding-bottom:10px;"
+        "border-bottom:1px solid var(--grid)}nav a{color:var(--fg-muted);"
+        "text-decoration:none;font-weight:600}nav a.active{color:var(--fg)}</style>"
+    )
+    picker = ""
+    if len(runs) > 1 and selected is not None:
+        links = " · ".join(
+            (
+                f"<strong>{r.run_id}</strong>"
+                if r.run_id == selected.run_id
+                else f"<a href='{prefix}/dashboard?run={r.run_id}'>{r.run_id}</a>"
+            )
+            for r in reversed(runs)
+        )
+        picker = f"<p style='color:var(--fg-muted);font-size:0.85rem'>Charts for run: {links}</p>"
+    refresh = f"<meta http-equiv='refresh' content='{refresh_seconds(state)}'>"
+    return html.replace("</head>", f"{nav_css}{refresh}</head>").replace(
+        "<body>", f"<body><nav>{nav}</nav>{picker}", 1
+    )
+
+
+def create_app(base: Path | None = None, link_prefix: str = "") -> FastAPI:
     app = FastAPI(title="ResearchForge monitor", docs_url=None, redoc_url=None)
 
     def state_or_404() -> ProjectState:
         try:
-            return read_state(base)
+            state = read_state(base)
         except FileNotFoundError as exc:
             raise HTTPException(
                 status_code=404,
                 detail="No initialized ResearchForge project here — run `researchforge init`.",
             ) from exc
+        state.link_prefix = link_prefix
+        return state
 
     @app.get("/", response_class=HTMLResponse)
     def overview() -> str:
@@ -69,59 +132,7 @@ def create_app(base: Path | None = None) -> FastAPI:
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(run: str | None = None) -> str:
-        from researchforge.reporting.dashboard import build_dashboard
-        from researchforge.storage.baseline_repository import get_latest_successful_baseline
-        from researchforge.storage.contract_repository import get_active_contract
-        from researchforge.storage.experiment_repository import list_runs
-
-        state = state_or_404()
-        with closing(open_readonly(base)) as conn:
-            if get_active_contract(conn) is None or get_latest_successful_baseline(conn) is None:
-                body = "<h1>Dashboard</h1>" + guidance_card(
-                    state,
-                    "The dashboard needs an approved contract and a successful baseline "
-                    "before there is anything honest to chart.",
-                )
-                return page_shell(
-                    "ResearchForge — dashboard", "/dashboard", body, refresh_seconds(state)
-                )
-            runs = list_runs(conn)
-            if run is not None:
-                selected = next((r for r in runs if r.run_id == run), None)
-                if selected is None:
-                    raise HTTPException(status_code=404, detail=f"Unknown run: {run}")
-            else:
-                selected = runs[-1] if runs else None
-            html = build_dashboard(conn, selected, link_base="/experiments")
-        # Inject the nav + auto-refresh into the standalone dashboard page.
-        from researchforge.server.pages import _NAV
-
-        nav = "".join(
-            f"<a href='{href}'{' class=active' if href == '/dashboard' else ''}>{label}</a>"
-            for href, label in _NAV
-        )
-        nav_css = (
-            "<style>nav{display:flex;gap:16px;margin-bottom:20px;padding-bottom:10px;"
-            "border-bottom:1px solid var(--grid)}nav a{color:var(--fg-muted);"
-            "text-decoration:none;font-weight:600}nav a.active{color:var(--fg)}</style>"
-        )
-        picker = ""
-        if len(runs) > 1 and selected is not None:
-            links = " · ".join(
-                (
-                    f"<strong>{r.run_id}</strong>"
-                    if r.run_id == selected.run_id
-                    else f"<a href='/dashboard?run={r.run_id}'>{r.run_id}</a>"
-                )
-                for r in reversed(runs)
-            )
-            picker = (
-                f"<p style='color:var(--fg-muted);font-size:0.85rem'>Charts for run: {links}</p>"
-            )
-        refresh = f"<meta http-equiv='refresh' content='{refresh_seconds(state)}'>"
-        return html.replace("</head>", f"{nav_css}{refresh}</head>").replace(
-            "<body>", f"<body><nav>{nav}</nav>{picker}", 1
-        )
+        return render_dashboard_page(state_or_404(), base, run)
 
     @app.get("/api/state")
     def api_state() -> JSONResponse:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from contextlib import closing
+from contextlib import closing, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -29,7 +29,7 @@ from researchforge.reporting.dashboard_cli import dashboard_command
 from researchforge.reporting.paper_cli import paper_app
 from researchforge.repository.cli import repo_app
 from researchforge.research.cli import papers_app, research_app
-from researchforge.server.cli import serve_command
+from researchforge.server.cli import hub_command, serve_command
 from researchforge.shipping.cli import ship_app
 from researchforge.storage.db import open_project_db
 from researchforge.storage.project_repository import get_project, insert_project
@@ -46,6 +46,7 @@ app = typer.Typer(
 
 @app.callback()
 def _root(
+    ctx: typer.Context,
     directory: Annotated[
         Path | None,
         typer.Option(
@@ -64,6 +65,31 @@ def _root(
     if directory is not None:
         os.chdir(directory)
 
+    # Git-style walk-up: run from any subfolder of a project (e.g. inside the
+    # cloned repo being improved) and the command still finds the project root.
+    # `init` is exempt — it creates projects and must honor the exact cwd.
+    if ctx.invoked_subcommand != "init" and not is_initialized():
+        from researchforge.config.paths import find_project_root
+
+        root = find_project_root()
+        if root is not None:
+            os.chdir(root)
+            typer.echo(f"Using project at {root}", err=True)
+
+    if is_initialized():
+        from researchforge.config.registry import touch_project
+
+        with suppress(OSError):  # registry is best-effort bookkeeping
+            touch_project(Path.cwd())
+
+    if ctx.invoked_subcommand not in ("hub", "serve", None) and not os.environ.get(
+        "RESEARCHFORGE_NO_HUB"
+    ):
+        from researchforge.server.monitor import ensure_hub
+
+        with suppress(Exception):  # the hub must never break a command
+            ensure_hub()
+
 
 app.add_typer(project_app, name="project")
 app.add_typer(repo_app, name="repo")
@@ -78,6 +104,7 @@ app.add_typer(results_app, name="results")
 app.command("validate")(validate_command)
 app.command("dashboard")(dashboard_command)
 app.command("serve")(serve_command)
+app.command("hub")(hub_command)
 app.command("paths")(paths_command)
 app.add_typer(ship_app, name="ship")
 app.add_typer(paper_app, name="paper")
@@ -113,8 +140,17 @@ def init(
 ) -> None:
     """Initialize a ResearchForge project in the current directory."""
     from researchforge.claude.installer import InstallReport, install_skills
+    from researchforge.config.paths import find_project_root
+    from researchforge.config.registry import touch_project
 
     already = is_initialized()
+    ancestor = None if already else find_project_root(Path.cwd().parent)
+    if ancestor is not None:
+        typer.echo(
+            f"Note: an initialized project already exists at {ancestor} — "
+            "continuing creates a separate, nested project here.",
+            err=True,
+        )
     project: Project | None = None
     if not already:
         researchforge_dir().mkdir(parents=True, exist_ok=True)
@@ -129,6 +165,8 @@ def init(
         with closing(open_project_db()) as conn:
             insert_project(conn, project)
         record_event("initialized")
+        with suppress(OSError):
+            touch_project(Path.cwd())
 
     skills: InstallReport | None = install_skills() if claude else None
 

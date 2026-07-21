@@ -105,11 +105,13 @@ STATE_KEEPER_SCRIPT = """
 """
 
 
-def page_shell(title: str, active: str, body: str, refresh: int | None) -> str:
+def page_shell(title: str, active: str, body: str, refresh: int | None, prefix: str = "") -> str:
     nav = "".join(
-        f"<a href='{href}'{' class=active' if href == active else ''}>{label}</a>"
+        f"<a href='{prefix}{href}'{' class=active' if href == active else ''}>{label}</a>"
         for href, label in _NAV
     )
+    if prefix:
+        nav = f"<a href='/'>⌂ all projects</a>{nav}"
     meta_refresh = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh else ""
     return (
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
@@ -178,7 +180,13 @@ def overview_page(state: ProjectState) -> str:
         )
         body.append(f"<h2>Deliverables</h2><ul>{items}</ul>")
     body.append(locations_section(state))
-    return page_shell(f"ResearchForge — {project.name}", "/", "".join(body), refresh_seconds(state))
+    return page_shell(
+        f"ResearchForge — {project.name}",
+        "/",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
+    )
 
 
 def _papers_table(papers: list[Paper]) -> str:
@@ -229,7 +237,10 @@ def _search_session_details(state: ProjectState) -> list[str]:
                 "<p class='empty'>Papers for this session are not attributed — it was "
                 "recorded by an earlier ResearchForge version.</p>"
             )
-        inner.append(f"<p class='sub'><a href='/sessions/{escape(run_id)}'>open session →</a></p>")
+        inner.append(
+            f"<p class='sub'><a href='{state.link_prefix}/sessions/{escape(run_id)}'>"
+            "open session →</a></p>"
+        )
         sections.append(
             f"<details class='session' id='session-{escape(run_id)}'{opened}>"
             f"<summary>{summary}</summary>{''.join(inner)}</details>"
@@ -268,7 +279,11 @@ def research_page(state: ProjectState) -> str:
     else:
         body.append("<p class='empty'>No hypotheses imported yet.</p>")
     return page_shell(
-        "ResearchForge — research", "/research", "".join(body), refresh_seconds(state)
+        "ResearchForge — research",
+        "/research",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
     )
 
 
@@ -412,7 +427,7 @@ def run_page(state: ProjectState, run_id: str) -> str:
             if run.completed_at
             else ""
         )
-        + " · <a href='/experiments'>all runs</a></p>",
+        + f" · <a href='{state.link_prefix}/experiments'>all runs</a></p>",
     ]
     from researchforge.config.paths import experiment_artifacts_dir, worktrees_dir
 
@@ -458,10 +473,15 @@ def run_page(state: ProjectState, run_id: str) -> str:
             f"<tbody>{''.join(rows)}</tbody></table>"
         )
     body.append(
-        f"<p class='sub'><a href='/dashboard?run={escape(run_id)}'>charts for this run →</a></p>"
+        f"<p class='sub'><a href='{state.link_prefix}/dashboard?run={escape(run_id)}'>"
+        "charts for this run →</a></p>"
     )
     return page_shell(
-        f"ResearchForge — {run_id}", "/experiments", "".join(body), refresh_seconds(state)
+        f"ResearchForge — {run_id}",
+        "/experiments",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
     )
 
 
@@ -513,7 +533,7 @@ def experiments_page(state: ProjectState) -> str:
         summary = (
             f"{marker}{escape(run.run_id)} <span class='sub'>· {escape(run.status.value)} · "
             f"{escape(run.execution_mode.value)} mode · {len(plan_experiments)} experiment(s) · "
-            f"<a href='/runs/{escape(run.run_id)}'>full history</a></span>"
+            f"<a href='{state.link_prefix}/runs/{escape(run.run_id)}'>full history</a></span>"
         )
         table = (
             "<table><thead><tr><th>id</th><th>title</th><th>status</th><th>stages run</th>"
@@ -525,7 +545,11 @@ def experiments_page(state: ProjectState) -> str:
             f"<summary>{summary}</summary>{table}</details>"
         )
     return page_shell(
-        "ResearchForge — experiments", "/experiments", "".join(body), refresh_seconds(state)
+        "ResearchForge — experiments",
+        "/experiments",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
     )
 
 
@@ -562,7 +586,7 @@ def session_page(state: ProjectState, run_id: str) -> str:
             f"fetched {run.get('fetched_count', 0)} → deduplicated "
             f"{run.get('deduped_count', 0)} → selected {run.get('selected_count', 0)}"
         )
-        + " · <a href='/research'>all research</a></p>",
+        + f" · <a href='{state.link_prefix}/research'>all research</a></p>",
         "<p class='sub'>work locations · project: "
         f"<code>{escape(str(Path.cwd().resolve()))}</code> · synthesis staging: "
         f"<code>{escape(str(_synthesis_staging()))}</code></p>",
@@ -600,8 +624,8 @@ def session_page(state: ProjectState, run_id: str) -> str:
         for experiment in followed:
             exp_run = run_by_plan.get(experiment.plan_id)
             links = (
-                f"<a href='/runs/{escape(exp_run)}'>history</a> · "
-                f"<a href='/dashboard?run={escape(exp_run)}'>charts</a>"
+                f"<a href='{state.link_prefix}/runs/{escape(exp_run)}'>history</a> · "
+                f"<a href='{state.link_prefix}/dashboard?run={escape(exp_run)}'>charts</a>"
                 if exp_run
                 else "—"
             )
@@ -620,7 +644,11 @@ def session_page(state: ProjectState, run_id: str) -> str:
         )
 
     return page_shell(
-        f"ResearchForge — session #{number}", "/research", "".join(body), refresh_seconds(state)
+        f"ResearchForge — session #{number}",
+        "/research",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
     )
 
 
@@ -685,8 +713,8 @@ def experiment_page(state: ProjectState, experiment_id: str) -> str:
         f"<h1>{escape(experiment_id)} — {escape(experiment.title)}</h1>",
         f"<p class='sub'>{escape(experiment.change_summary)}"
         + (
-            f" · <a href='/runs/{escape(run_id)}'>run history</a> · "
-            f"<a href='/dashboard?run={escape(run_id)}'>charts</a>"
+            f" · <a href='{state.link_prefix}/runs/{escape(run_id)}'>run history</a> · "
+            f"<a href='{state.link_prefix}/dashboard?run={escape(run_id)}'>charts</a>"
             if run_id
             else ""
         )
@@ -701,7 +729,7 @@ def experiment_page(state: ProjectState, experiment_id: str) -> str:
     lineage = []
     if parent is not None:
         lineage.append(
-            f"<li>parent: <a href='/experiments/{escape(parent.experiment_id)}'>"
+            f"<li>parent: <a href='{state.link_prefix}/experiments/{escape(parent.experiment_id)}'>"
             f"{escape(parent.experiment_id)}</a> ({escape(parent.title)}, "
             f"{escape(parent.status.value)})</li>"
         )
@@ -709,7 +737,7 @@ def experiment_page(state: ProjectState, experiment_id: str) -> str:
         child_value = latest_value(child.experiment_id)
         value_text = f" at {child_value:g}" if child_value is not None else ""
         lineage.append(
-            f"<li>child: <a href='/experiments/{escape(child.experiment_id)}'>"
+            f"<li>child: <a href='{state.link_prefix}/experiments/{escape(child.experiment_id)}'>"
             f"{escape(child.experiment_id)}</a> ({escape(child.title)}, "
             f"{escape(child.status.value)}{value_text})</li>"
         )
@@ -757,7 +785,11 @@ def experiment_page(state: ProjectState, experiment_id: str) -> str:
             + "</ul>"
         )
     return page_shell(
-        f"ResearchForge — {experiment_id}", "/experiments", "".join(body), refresh_seconds(state)
+        f"ResearchForge — {experiment_id}",
+        "/experiments",
+        "".join(body),
+        refresh_seconds(state),
+        prefix=state.link_prefix,
     )
 
 
