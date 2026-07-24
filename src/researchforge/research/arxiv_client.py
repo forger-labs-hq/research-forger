@@ -133,8 +133,7 @@ class ArxivClient:
             timeout=30.0,
             headers={
                 "User-Agent": (
-                    f"researchforge/{__version__} "
-                    "(https://github.com/forger-labs-hq/researchforge)"
+                    f"researchforge/{__version__} (https://github.com/forger-labs-hq/researchforge)"
                 )
             },
         )
