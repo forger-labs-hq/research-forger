@@ -12,12 +12,16 @@ what a skill, a prompt, or Claude itself says.
 ## Install
 
 ```bash
-pip install -e ".[dev]"        # from source, until a package is published
-researchforge init --claude    # initialize .researchforge/ + install skills
+pip install "researchforge[serve]"   # (or from source: pip install -e ".[dev]")
+researchforge claude install --user  # recommended: skills in EVERY session
 ```
 
-`init --claude` copies the packaged skills into `.claude/skills/` and prints
-the quickstart. Skills can also be managed directly:
+With `--user`, the skills live in `~/.claude/skills/` and every Claude Code
+session sees them — start any conversation with `/researchforge-start` and
+name the folder to work in. Prefer per-project skills? In the project
+folder, `researchforge init --claude` copies them into `.claude/skills/`
+(and initializes `.researchforge/`) — then open Claude Code in that folder.
+Skills can also be managed directly:
 
 ```bash
 researchforge claude install     # install/refresh (never clobbers your edits)
