@@ -134,7 +134,7 @@ class ArxivClient:
             headers={
                 "User-Agent": (
                     f"researchforge/{__version__} "
-                    "(https://github.com/forger-labs-hq/research-forger)"
+                    "(https://github.com/forger-labs-hq/researchforge)"
                 )
             },
         )
