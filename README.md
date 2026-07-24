@@ -32,49 +32,50 @@ runs in a detached git worktree (your checkout is never touched), and
 
 ## Get started (two minutes)
 
-Everything runs on your machine — nothing is uploaded anywhere. "Working on
-a repository" just means having it on disk and starting Claude Code from
-inside it.
+Everything runs on your machine — nothing is uploaded anywhere.
 
 ```bash
-# 1. Install ResearchForge:
-pip install "researchforge[serve]"   # or pipx install "researchforge[serve]"
-#    (working on the source? python -m venv .venv && pip install -e ".[dev]")
+# 1. Install ResearchForge (Python 3.12+):
+pip install "researchforge[serve]"       # or: pipx install "researchforge[serve]"
 
-# 2. Go to the directory you want to work in (a repository to improve, or
-#    ANY folder for pure research — clone/create it first if needed)
-#    and initialize ResearchForge inside it:
-cd path/to/your-project
-researchforge init --claude
-
-# 3. Start Claude Code IN that directory:
-claude
+# 2. Make ResearchForge available in EVERY Claude Code session (recommended):
+researchforge claude install --user      # skills -> ~/.claude/skills/
 ```
 
-(Using the desktop app instead? Open that repository folder as the
-session's project — a session started from the home screen without a
-folder can't see any project's skills.)
-
-Then say what you want:
+That's the whole setup. Now open **any** Claude Code session and say what
+you want:
 
 > `/researchforge-start` — *"Can uncertainty-aware routing outperform fixed
-> routing?"* — or — *"Improve this repo's F1 without hurting latency."*
+> routing?"* — or — *"Improve this repo's F1 without hurting latency —
+> work in ~/projects/my-repo."*
 
-Claude walks the whole journey from there: it runs the CLI, shows you what
-it found, and **asks before anything is approved, executed, or shipped**.
-If you ever wonder where things stand, `researchforge status` names the
-exact next step.
+Claude asks **where the project should live** (any folder — a cloned repo
+to improve, or an empty directory for pure research), initializes it there,
+and walks the whole journey: it runs the CLI, shows you what it found, and
+**asks before anything is approved, executed, or shipped**. If you ever
+wonder where things stand, `researchforge status` names the exact next
+step — and the **hub** at http://127.0.0.1:9000 shows every project, where
+it lives, and what's happening, all the time.
+
+Prefer per-project skills instead of the global install? `cd` into the
+folder and run `researchforge init --claude`, then start Claude Code **in
+that folder** (desktop app: open the folder as the session's project — a
+home-screen session without a folder can't see project skills).
 
 Everything is **directory-scoped**: the database, worktrees, artifacts, and
-dashboard live under the folder you initialized — which can be anywhere on
-disk, not just next to this repo. Point a command at another project with
-`researchforge -C /path/to/project <command>` (like `git -C`), and print
-the full location map with `researchforge paths`.
+dashboard live under the project folder. Run commands from any subfolder
+(they walk up to the project root like git), point at another project with
+`researchforge -C /path/to/project <command>`, and print the full location
+map with `researchforge paths`.
 
-> **Why don't I see `/researchforge-…` in a new session?** Project skills
-> load from the directory a session is opened in. Open the session in the
-> initialized repository — or run `researchforge claude install --user` once
-> to put the skills in `~/.claude/skills/`, where every session sees them.
+**Working on the ResearchForge source itself?**
+
+```bash
+git clone https://github.com/forger-labs-hq/researchforge
+cd researchforge
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+```
 
 ## See it work first
 
