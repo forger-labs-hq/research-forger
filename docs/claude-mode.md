@@ -12,7 +12,7 @@ what a skill, a prompt, or Claude itself says.
 ## Install
 
 ```bash
-pip install -e ".[dev]"        # from source, until a package is published
+pip install "researchforge[serve]"   # (or from source: pip install -e ".[dev]")
 researchforge init --claude    # initialize .researchforge/ + install skills
 ```
 

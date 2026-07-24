@@ -37,9 +37,9 @@ a repository" just means having it on disk and starting Claude Code from
 inside it.
 
 ```bash
-# 1. Install ResearchForge (no package published yet — from source):
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+# 1. Install ResearchForge:
+pip install "researchforge[serve]"   # or pipx install "researchforge[serve]"
+#    (working on the source? python -m venv .venv && pip install -e ".[dev]")
 
 # 2. Go to the directory you want to work in (a repository to improve, or
 #    ANY folder for pure research — clone/create it first if needed)

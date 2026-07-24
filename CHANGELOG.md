@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — Phase 1 open-source beta (unreleased)
+## 0.1.0 — Phase 1 open-source beta (2026-07-24)
 
 The complete local pipeline, Claude-first.
 
